@@ -29,7 +29,7 @@ def visualize_M(M, idx):
 
 
 def train_network(train_loader, val_loader, test_loader,
-                  num_classes=2, name=None,
+                  num_classes=2, name=None, model=None,
                   save_frames=False):
 
 
@@ -37,7 +37,7 @@ def train_network(train_loader, val_loader, test_loader,
         inputs, labels = batch
         _, dim = inputs.shape
         break
-    net = neural_model.Net(dim, num_classes=num_classes)
+    #net = neural_model.Net(dim, num_classes=num_classes)
 
     params = 0
     for idx, param in enumerate(list(net.parameters())):

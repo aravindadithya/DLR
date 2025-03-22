@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from numpy.linalg import solve
-import classic_kernel
+import kernels
 from tqdm import tqdm
 import hickle
 
