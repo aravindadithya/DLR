@@ -4,7 +4,7 @@ import torch
 from torch.autograd import Variable
 import torch.optim as optim
 import time
-import model1
+#import model1
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -29,7 +29,7 @@ def visualize_M(M, idx):
 
 
 def train_network(train_loader, val_loader, test_loader,
-                  num_classes=2, name=None, model=None,
+                  num_classes=2, name=None, net=None,
                   save_frames=False):
 
 
@@ -53,7 +53,8 @@ def train_network(train_loader, val_loader, test_loader,
     num_epochs = 501
     best_val_acc = 0
     best_test_acc = 0
-    best_val_loss = np.float("inf")
+    #best_val_loss = np.float("inf")
+    best_val_loss = float("inf")
     best_test_loss = 0
 
     for i in range(num_epochs):
