@@ -9,6 +9,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
+import torch.nn as nn
 
 
 def visualize_M(M, idx):
@@ -28,8 +29,8 @@ def visualize_M(M, idx):
     return F
 
 
-def train_network(train_loader, val_loader, test_loader,
-                  num_classes=2, name=None, net=None,
+def train_network(train_loader, val_loader, test_loader, net, optimizer, lfn,
+                  num_classes=2, name=None, 
                   save_frames=False):
 
 
@@ -46,8 +47,6 @@ def train_network(train_loader, val_loader, test_loader,
             size *= param.size()[idx]
             params += size
     print("NUMBER OF PARAMS: ", params)
-
-    optimizer = torch.optim.SGD(net.parameters(), lr=.1) #Should pass this as an argument
 
     net.cuda()
     num_epochs = 5
@@ -77,12 +76,19 @@ def train_network(train_loader, val_loader, test_loader,
                 torch.save(d, 'nn_models/trained_nn.pth')
             net.cuda()
 
-        train_loss = train_step(net, optimizer, train_loader, save_frames=save_frames)
-        val_loss = val_step(net, val_loader)
-        test_loss = val_step(net, test_loader)
-        train_acc = get_acc(net, train_loader)
-        val_acc = get_acc(net, val_loader)
-        test_acc = get_acc(net, test_loader)
+        train_loss = train_step(net, optimizer, lfn, train_loader, save_frames=save_frames)
+        val_loss = val_step(net, val_loader, lfn)
+        test_loss = val_step(net, test_loader, lfn)
+        
+        if isinstance(lfn, nn.CrossEntropyLoss):
+            train_acc = get_acc_ce(net, train_loader)
+            val_acc = get_acc_ce(net, val_loader)
+            test_acc = get_acc_ce(net, test_loader)
+        elif isinstance(lfn, nn.MSELoss):
+            train_acc = get_acc_mse(net, train_loader)
+            val_acc = get_acc_mse(net, val_loader)
+            test_acc = get_acc_mse(net, test_loader)
+            
 
         if val_acc >= best_val_acc:
             best_val_acc = val_acc
@@ -117,7 +123,7 @@ def get_data(loader):
     return torch.cat(X, dim=0), torch.cat(y, dim=0)
 
 
-def train_step(net, optimizer, train_loader, save_frames=False):
+def train_step(net, optimizer, lfn, train_loader, save_frames=False):
     net.train()
     start = time.time()
     train_loss = 0.
@@ -128,7 +134,8 @@ def train_step(net, optimizer, train_loader, save_frames=False):
         targets = labels
         output = net(Variable(inputs).cuda())
         target = Variable(targets).cuda()
-        loss = torch.mean(torch.pow(output - target, 2))
+        #loss = torch.mean(torch.pow(output - target, 2))
+        loss= lfn(output,target)
         loss.backward()
         optimizer.step()
         train_loss += loss.cpu().data.numpy() * len(inputs)
@@ -138,7 +145,7 @@ def train_step(net, optimizer, train_loader, save_frames=False):
     return train_loss
 
 
-def val_step(net, val_loader):
+def val_step(net, val_loader, lfn):
     net.eval()
     val_loss = 0.
 
@@ -148,18 +155,20 @@ def val_step(net, val_loader):
         with torch.no_grad():
             output = net(Variable(inputs).cuda())
             target = Variable(targets).cuda()
-        loss = torch.mean(torch.pow(output - target, 2))
+        #loss = torch.mean(torch.pow(output - target, 2))
+        loss= lfn(output,target)
         val_loss += loss.cpu().data.numpy() * len(inputs)
     val_loss = val_loss / len(val_loader.dataset)
     return val_loss
 
 
-def get_acc(net, loader):
+def get_acc_mse(net, loader):
     net.eval()
     count = 0
     for batch_idx, batch in enumerate(loader):
         inputs, targets = batch
         with torch.no_grad():
+            #Variable is depreceated, use tensor
             output = net(Variable(inputs).cuda())
             target = Variable(targets).cuda()
 
@@ -168,3 +177,16 @@ def get_acc(net, loader):
 
         count += torch.sum(labels == preds).cpu().data.numpy()
     return count / len(loader.dataset) * 100
+
+def get_acc_ce(net, loader):
+    net.eval()
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        for inputs, targets in loader:
+            inputs, targets = inputs.cuda(), targets.cuda()  # Move to CUDA consistently
+            outputs = net(inputs)
+            _, predicted = torch.max(outputs.data, 1)  # Get predicted classes
+            total += targets.size(0)
+            correct += (predicted == targets).sum().item()
+    return 100 * correct / total

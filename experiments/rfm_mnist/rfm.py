@@ -1,13 +1,13 @@
 import numpy as np
 import torch
 from numpy.linalg import solve
-import kernels
+import kernels #Should be called from utils
 from tqdm import tqdm
 import hickle
 
 
 def laplace_kernel_M(pair1, pair2, bandwidth, M):
-    return classic_kernel.laplacian_M(pair1, pair2, bandwidth, M)
+    return kernels.laplacian_M(pair1, pair2, bandwidth, M)
 
 
 def get_grads(X, sol, L, P, batch_size=2):

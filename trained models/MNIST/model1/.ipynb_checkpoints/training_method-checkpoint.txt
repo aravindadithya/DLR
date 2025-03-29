@@ -123,6 +123,10 @@ Optimizer:
 
 optimizer = torch.optim.SGD(net.parameters(), lr=.1) 
 
+Loss:
+
+loss = torch.mean(torch.pow(output - target, 2))
+
 
 Load Weights:
 
