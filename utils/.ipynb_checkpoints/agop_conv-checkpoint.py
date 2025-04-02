@@ -17,6 +17,8 @@ from numpy.linalg import eig
 from copy import deepcopy
 from torch.linalg import norm, svd
 from torchvision import models
+import visdom
+from torch.linalg import norm, eig
 
 
 SEED = 2323
@@ -77,6 +79,7 @@ def egop(model, z):
     c = 10
     chunk_idxs = 10
     #Chunking is done to compute jacobian as chunks. This saves memory
+    #TODO: chunk should be passed as argument
     chunk = c // chunk_idxs
     for i in range(chunk_idxs):
         J = get_jacobian(model, z, c_idx=i, chunk=chunk)
@@ -206,11 +209,11 @@ def verify_NFA(net, init_net, trainloader, layer_idx=0):
                   stride=(s1, s2),
                   layer_idx=l_idx)
     G = sqrt(G)
-
+    Gop = G.clone()
     r_val = correlation(M, G)
     print("Correlation between Trained CNFM and AGOP: ", r_val)
     print("Final: ", i_val, r_val)
-
+    return Gop 
     #return i_val.data.numpy(), r_val.data.numpy()
 
 
