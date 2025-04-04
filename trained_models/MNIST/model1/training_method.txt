@@ -1,0 +1,150 @@
+Utils:
+def one_hot_data(dataset, num_samples=-1):
+    labelset = {}
+    for i in range(10):
+        one_hot = torch.zeros(10)
+        one_hot[i] = 1
+        labelset[i] = one_hot
+
+    subset = [(ex.flatten(), labelset[label]) for \
+              idx, (ex, label) in enumerate(dataset) if idx < num_samples]
+    return subset
+
+
+def group_by_class(dataset):
+    labelset = {}
+    for i in range(10):
+        labelset[i] = []
+    for i, batch in enumerate(dataset):
+        img, label = batch
+        labelset[label].append(img.view(1, 3, 32, 32))
+    return labelset
+
+
+def split(trainset, p=.8):
+    train, val = train_test_split(trainset, train_size=p)
+    return train, val
+
+def merge_data(mnist, n):
+    #cifar_by_label = group_by_class(cifar)
+
+    mnist_by_label = group_by_class(mnist)
+
+    data = []
+    labels = []
+
+    labelset = {}
+
+    for i in range(10):
+        one_hot = torch.zeros(1, 10)
+        one_hot[0, i] = 1
+        labelset[i] = one_hot
+
+    for l in mnist_by_label:
+
+        #cifar_data = torch.cat(cifar_by_label[l])
+        mnist_data = torch.cat(mnist_by_label[l])
+        min_len = len(mnist_data)
+        m = min(n, min_len)
+        #cifar_data = cifar_data[:m]
+        mnist_data = mnist_data[:m]
+
+        merged = torch.cat([mnist_data], axis=-1)
+        #for i in range(3):
+           # vis.image(merged[i])
+        data.append(merged.reshape(m, -1))
+        print(merged.shape)
+        labels.append(np.repeat(labelset[l], m, axis=0))
+    data = torch.cat(data, axis=0)
+
+    labels = np.concatenate(labels, axis=0)
+    merged_labels = torch.from_numpy(labels)
+
+    return list(zip(data, labels))
+
+
+
+
+
+Dataset transforms:
+
+transform = transforms.Compose(
+        [transforms.ToTensor()
+        ])
+
+    mnist_transform = transforms.Compose(
+        [transforms.Resize([32,32]),
+         transforms.ToTensor(),
+         transforms.Lambda(lambda x: x.repeat(3, 1, 1))
+        ])
+
+
+    path = '~/datasets/'
+    cifar_trainset = torchvision.datasets.CIFAR10(root=path,
+                                                  train=True,
+                                                  transform=transform,
+                                                  download=False)
+
+    mnist_trainset = torchvision.datasets.MNIST(root=path,
+                                                train=True,
+                                                transform=mnist_transform,
+                                                download=False)
+
+    trainset = merge_data(cifar_trainset, mnist_trainset, 5000)
+    trainset, valset = split(trainset, p=.8)
+    print("Train Size: ", len(trainset), "Val Size: ", len(valset))
+
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=100,
+                                              shuffle=True, num_workers=2)
+    valloader = torch.utils.data.DataLoader(valset, batch_size=100,
+                                            shuffle=False, num_workers=1)
+
+    cifar_testset = torchvision.datasets.CIFAR10(root=path,
+                                                 train=False,
+                                                 transform=transform,
+                                                 download=False)
+
+    mnist_testset = torchvision.datasets.MNIST(root=path,
+                                               train=False,
+                                               transform=mnist_transform,
+                                               download=False)
+
+    testset = merge_data(cifar_testset, mnist_testset, 1000)
+    print("Test Size: ", len(testset))
+
+    testloader = torch.utils.data.DataLoader(testset, batch_size=128,
+                                             shuffle=False, num_workers=2)
+
+
+net = model1.Net(3072, num_classes=10)
+
+
+Optimizer:
+
+optimizer = torch.optim.SGD(net.parameters(), lr=.1) 
+
+Loss:
+
+loss = torch.mean(torch.pow(output - target, 2))
+
+
+Load Weights:
+
+import os
+model_dir= 'C:\\Users\\garav\\AGOP\\DLR\\trained_models\\MNIST\\model1\\nn_models\\'
+
+if os.path.exists(model_dir+'mnist_fc_trained_nn.pth'):
+    checkpoint = torch.load(model_dir+'mnist_fc_trained_nn.pth', map_location=torch.device(device))
+    net.load_state_dict(checkpoint['state_dict'])  # Access the 'state_dict' within the loaded dictionary
+    print("Model weights loaded successfully.")
+else:
+    t.train_network(trainloader, valloader, testloader,
+                num_classes=10, root_path= model_dir, 
+                optimizer=torch.optim.SGD(net.parameters(), lr=.1),
+                lfn=  nn.MSELoss(), 
+                num_epochs = 10,
+                name=name, net=net)
+
+Result: 
+Epoch:  60 Train Loss:  0.004787819762714207 Test Loss:  0.006359952214435804 Train Acc:  99.08749999999999 Test Acc:  98.0538256227758 Best Val Acc:  98.19 Best Val Loss:  0.006412025808822363 Best Test Acc:  98.00934163701068 Best Test Loss:  0.006359952214435804
+
