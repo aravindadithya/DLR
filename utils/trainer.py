@@ -10,7 +10,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 import torch.nn as nn
-
+import os
 
 def visualize_M(M, idx):
     d, _ = M.shape
@@ -29,8 +29,8 @@ def visualize_M(M, idx):
     return F
 
 
-def train_network(train_loader, val_loader, test_loader, net, optimizer, lfn,
-                  num_classes=2, name=None, 
+def train_network(train_loader, val_loader, test_loader, net, optimizer, lfn, root_path,
+                  num_classes=2, name=None, num_epochs = 5, 
                   save_frames=False):
 
 
@@ -49,13 +49,12 @@ def train_network(train_loader, val_loader, test_loader, net, optimizer, lfn,
     print("NUMBER OF PARAMS: ", params)
 
     net.cuda()
-    num_epochs = 5
     best_val_acc = 0
     best_test_acc = 0
     #best_val_loss = np.float("inf")
     best_val_loss = float("inf")
     best_test_loss = 0
-
+    os.makedirs(root_path, exist_ok=True)     
     for i in range(num_epochs):
         if save_frames:
             net.cpu()
@@ -69,11 +68,12 @@ def train_network(train_loader, val_loader, test_loader, net, optimizer, lfn,
         if i == 0 or i == 1:
             net.cpu()
             d = {}
-            d['state_dict'] = net.state_dict()
+            d['state_dict'] = net.state_dict()    
             if name is not None:
-                torch.save(d, 'nn_models/' + name + '_trained_nn_' + str(i) + '.pth')
+                file_path = os.path.join(root_path, f'{name}_trained_nn_{i}.pth')
             else:
-                torch.save(d, 'nn_models/trained_nn.pth')
+                file_path = os.path.join(root_path, f'trained_nn_{i}.pth')
+            torch.save(d, file_path)
             net.cuda()
 
         train_loss = train_step(net, optimizer, lfn, train_loader, save_frames=save_frames)
@@ -97,9 +97,10 @@ def train_network(train_loader, val_loader, test_loader, net, optimizer, lfn,
             d = {}
             d['state_dict'] = net.state_dict()
             if name is not None:
-                torch.save(d, 'nn_models/' + name + '_trained_nn.pth')
+                file_path = os.path.join(root_path, f'{name}_trained_nn.pth')
             else:
-                torch.save(d, 'nn_models/trained_nn.pth')
+                file_path = os.path.join(root_path, f'trained_nn.pth')
+            torch.save(d, file_path)
             net.cuda()
 
         if val_loss <= best_val_loss:

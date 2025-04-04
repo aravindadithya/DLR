@@ -28,6 +28,8 @@ random.seed(SEED)
 np.random.seed(SEED)
 torch.cuda.manual_seed(SEED)
 
+vis = visdom.Visdom('http://127.0.0.1', use_incoming_socket=False)
+vis.close(env='main')
 
 def patchify(x, patch_size, stride_size, padding=None, pad_type='zeros'):
     '''
@@ -77,7 +79,7 @@ def get_jacobian(net, data, c_idx=0, chunk=100):
 def egop(model, z):
     ajop = 0
     c = 10
-    chunk_idxs = 10
+    chunk_idxs = 1
     #Chunking is done to compute jacobian as chunks. This saves memory
     #TODO: chunk should be passed as argument
     chunk = c // chunk_idxs
@@ -86,6 +88,7 @@ def egop(model, z):
         n, c, w, h, _, _, _ = J.shape
         J = J.transpose(1, 3).transpose(1, 2) #(n, w_out, h_out, chunk, c, q, s)
         grads = J.reshape(n*w*h, c, -1) #(n*w_out*h_out, chunk, c*q*s)
+        #Clarify: Where is mean taken
         ajop += torch.einsum('ncd, ncD -> dD', grads, grads) #(c*q*s,c*q*s)
     return ajop
 
@@ -208,6 +211,7 @@ def verify_NFA(net, init_net, trainloader, layer_idx=0):
                   padding=(pad1, pad2),
                   stride=(s1, s2),
                   layer_idx=l_idx)
+    print("Shpae after gradients: ", G.shape)
     G = sqrt(G)
     Gop = G.clone()
     r_val = correlation(M, G)
@@ -215,6 +219,60 @@ def verify_NFA(net, init_net, trainloader, layer_idx=0):
     print("Final: ", i_val, r_val)
     return Gop 
     #return i_val.data.numpy(), r_val.data.numpy()
+
+def vis_transform_image(net, img, G, layer_idx=0):
+
+    count = -1
+    
+    # Computes WtW for the weights(ignoring its bias) of layer_idx+1 the conv layer
+    for idx, p in enumerate(net.parameters()):
+        if len(p.shape) > 1:
+            count += 1
+        if count == layer_idx:
+            M = p.data
+            print(M.shape)
+            _, ki, q, s = M.shape
+
+            M = M.reshape(-1, ki*q*s)
+            M = torch.einsum('nd, nD -> dD', M, M)
+            break
+
+    count = 0
+    l_idx = None
+    
+    # Get the layer_idx+1 conv layer 
+    for idx, m in enumerate(net.features):
+        if isinstance(m, nn.Conv2d):
+            print(m, count)
+            count += 1
+
+        if count-1 == layer_idx:
+            l_idx = idx
+            break
+
+    net.eval()
+    net.cuda()
+    img = img.cuda()
+    img = net.features[:l_idx](img).cpu()
+    net.cpu()
+    
+    # If G is given which is expected to be the AGOP of layer_idx+1 conv layer then that is used.
+    if G is not None:
+        M = G
+
+    patches = patchify(img, (q, s), (1, 1))
+    
+    print(patches.shape)
+    # Patches should will be of the shape (n,w,h,c,q,s) not (n,w,h,q,s,c)
+    n, w, h, q, s, c = patches.shape
+    # Vectorize each patch
+    patches = patches.reshape(n, w, h, q*s*c)
+    # Apply either WtW or AGOP of the layer_idx+1 conv to each patch. D is c*q*s vector
+    M_patch = torch.einsum('nwhd, dD -> nwhD', patches, M) #(n,w,h,c*q*s)
+    
+    M_patch = norm(M_patch, dim=-1) #(n,w,h)
+
+    vis.image(min_max(M_patch[0])) #(w,h) image.
 
 
 def sqrt(G):
