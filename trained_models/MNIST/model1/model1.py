@@ -19,12 +19,12 @@ class Net(nn.Module):
 
         self.features = nn.Sequential(
             nn.Linear(dim, k, bias=bias),
-            Nonlinearity()
-        )
-
-        self.classifier = nn.Sequential(
+            Nonlinearity(),
             nn.Linear(k, k, bias=bias),
             Nonlinearity(),
+        )
+
+        self.classifier = nn.Sequential(           
             nn.Linear(k, num_classes, bias=bias)
         )
 
