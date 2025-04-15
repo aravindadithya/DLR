@@ -6,7 +6,7 @@ import torch.optim as optim
 import time
 #import model1
 import matplotlib
-matplotlib.use('Agg')
+matplotlib.use('TkAgg') 
 import matplotlib.pyplot as plt
 import numpy as np
 import torch.nn as nn
@@ -80,14 +80,14 @@ def train_network(train_loader, val_loader, test_loader, net, optimizer, lfn, ro
         val_loss = val_step(net, val_loader, lfn)
         test_loss = val_step(net, test_loader, lfn)
         
-        if isinstance(lfn, nn.CrossEntropyLoss):
-            train_acc = get_acc_ce(net, train_loader)
-            val_acc = get_acc_ce(net, val_loader)
-            test_acc = get_acc_ce(net, test_loader)
-        elif isinstance(lfn, nn.MSELoss):
-            train_acc = get_acc_mse(net, train_loader)
-            val_acc = get_acc_mse(net, val_loader)
-            test_acc = get_acc_mse(net, test_loader)
+        #if (isinstance(lfn, nn.CrossEntropyLoss) or isinstance(lfn, nn.NLLLoss)):
+        train_acc = get_acc_ce(net, train_loader)
+        val_acc = get_acc_ce(net, val_loader)
+        test_acc = get_acc_ce(net, test_loader)
+        #elif(isinstance(lfn, nn.MSELoss)):
+            #train_acc = get_acc_mse(net, train_loader)
+            #val_acc = get_acc_mse(net, val_loader)
+            #test_acc = get_acc_mse(net, test_loader)
             
 
         if val_acc >= best_val_acc:
@@ -162,8 +162,9 @@ def val_step(net, val_loader, lfn):
     val_loss = val_loss / len(val_loader.dataset)
     return val_loss
 
-
+#TODO: Handle a single output net with MSE by rounding it. Unused function
 def get_acc_mse(net, loader):
+    # This assumes the output of the network is the number of classes and the targets are one-hot vectors
     net.eval()
     count = 0
     for batch_idx, batch in enumerate(loader):
@@ -189,5 +190,84 @@ def get_acc_ce(net, loader):
             outputs = net(inputs)
             _, predicted = torch.max(outputs.data, 1)  # Get predicted classes
             total += targets.size(0)
-            correct += (predicted == targets).sum().item()
+            # Targets maybe in one-hot format. Hence Max
+            if len(targets.size()) > 1:
+                _, labels = torch.max(targets, -1)
+            else:
+                labels = targets
+            correct += (predicted == labels).sum().item()
     return 100 * correct / total
+
+def visualize_predictions(model, dataloader, class_names, device="cpu", num_images=4):
+    """
+    Visualizes a batch of images from a DataLoader, along with their predicted
+    and actual labels, in a grid layout.
+
+    Args:
+        model (torch.nn.Module): The trained neural network model.
+        dataloader (torch.utils.data.DataLoader): The DataLoader providing the images and labels.
+        class_names (list): A list of class names corresponding to the label indices.
+        device (str, optional): The device to use for computation ('cpu' or 'cuda'). Defaults to 'cpu'.
+        num_images (int, optional): The number of images to visualize from the batch. Defaults to 4.
+    """
+    model.to(device)  # Ensure model is on the correct device
+    model.eval()  # Set the model to evaluation mode
+
+    with torch.no_grad():  # Disable gradient calculation for inference
+        try:
+            images, labels = next(iter(dataloader))  # Get a batch of data
+        except StopIteration:
+            print("DataLoader is empty.")
+            return
+
+        images = images.to(device)
+        labels = labels.to(device)
+
+        outputs = model(images)  # Get the model's predictions
+        _, predicted = torch.max(outputs, 1)  # Get the predicted class indices
+
+    # Convert tensors to numpy arrays for visualization
+    images_np = images.cpu().numpy()
+    labels_np = labels.cpu().numpy()
+    predicted_np = predicted.cpu().numpy()
+
+    # Ensure we don't try to display more images than are in the batch
+    num_images = min(num_images, images_np.shape[0])
+
+    # Calculate the number of rows and columns for the grid
+    num_cols = int(np.ceil(np.sqrt(num_images)))  # Determine the number of columns
+    num_rows = int(np.ceil(num_images / num_cols))  # Determine the number of rows
+
+    plt.figure(figsize=(15, 3 * num_rows))  # Adjust figure size based on the number of rows
+
+    for i in range(num_images):
+        plt.subplot(num_rows, num_cols, i + 1)  # Create subplots in a grid layout
+
+        # images_np[i] has shape (C, H, W). Transpose to (H, W, C) for imshow.
+        img = images_np[i].transpose((1, 2, 0))
+
+        # If the image has been normalized, unnormalize it. This is VERY important.
+        # The normalization depends on how you normalized the image in your dataset.
+        # Common normalization:
+        # transform = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        # If you used this, unnormalize with:
+        mean = np.array([0.485, 0.456, 0.406])
+        std = np.array([0.229, 0.224, 0.225])
+        img = std * img + mean
+        img = np.clip(img, 0, 1)  # Ensure values are in the range [0, 1]
+
+        plt.imshow(img)
+
+        # Determine the color of the text based on whether the prediction is correct
+        if labels_np[i] == predicted_np[i]:
+            color = 'green'
+        else:
+            color = 'red'
+
+        # Align the text for better readability
+        plt.title(f"Expected: {class_names[labels_np[i]]}\nPredicted: {class_names[predicted_np[i]]}", 
+        color=color, loc='center')
+        plt.axis('off')  # Turn off axis labels
+
+    plt.tight_layout()  # Adjust layout to prevent overlapping titles
+    plt.show()
