@@ -31,9 +31,10 @@ torch.cuda.manual_seed(SEED)
 vis = visdom.Visdom('http://127.0.0.1', use_incoming_socket=False)
 vis.close(env='main')
 
+
 def patchify(x, patch_size, stride_size, padding=None, pad_type='zeros'):
     '''
-        Given an input image (n,c,h,w) generate (n,w_out,h_out,c,q,s) respecting stride,padding, 
+        Given an input image (n,c,h,w) generate (n,h_out,w_out,c,q,s) respecting stride,padding, 
         w_out is number of pathces along the width for the given stride after padding
         h_out is number of pathces along the height for the given stride after padding
         (q,s) is the kernel dimensions 
@@ -54,7 +55,7 @@ def patchify(x, patch_size, stride_size, padding=None, pad_type='zeros'):
         x = pad(x, pad_dims, 'circular')
         
     patches = x.unfold(2, q1, s1).unfold(3, q2, s2) #(n, c, h_out, w_out, q, s)
-    patches = patches.transpose(1, 3).transpose(1, 2) #(n,w_out,h_out,c,q,s) 
+    patches = patches.transpose(1, 3).transpose(1, 2) #(n,h_out,w_out,c,q,s) 
     return patches
 
 class PatchConvLayer(nn.Module):
@@ -63,18 +64,20 @@ class PatchConvLayer(nn.Module):
         self.layer = conv_layer #(k,c,q,s)
 
     def forward(self, patches):
+        #Todo: 1. Check why the format is nwhcqr when the patches after patchify is nhwcqr.
+        #      2. Why does this output n,k,w,h when the standard format is n,k,h,w
         out = torch.einsum('nwhcqr, kcqr -> nwhk', patches, self.layer.weight)
         n, w, h, k = out.shape
-        out = out.transpose(1, 3).transpose(2, 3) #(n,k,w_out,h_out)
+        out = out.transpose(1, 3).transpose(2, 3) #Should be (n,k,h_out,w_out) even though w and h are swapped
         return out
 
 def get_jacobian(net, data, c_idx=0, chunk=100):
     with torch.no_grad():
         def single_net(x):
-            # x is (w_out,h_out,c,q,s)
+            # x is (h_out,w_out,c,q,s)
             return net(x.unsqueeze(0))[:,c_idx*chunk:(c_idx+1)*chunk].squeeze(0)
         # Parallelize across the images.
-        return torch.vmap(jacrev(single_net))(data) #(n, chunk, w_out, h_out, c, q, s)
+        return torch.vmap(jacrev(single_net))(data) #(n, chunk, h_out, w_out, c, q, s)
 
 def egop(model, z):
     ajop = 0
@@ -86,7 +89,7 @@ def egop(model, z):
     for i in range(chunk_idxs):
         J = get_jacobian(model, z, c_idx=i, chunk=chunk)
         n, c, w, h, _, _, _ = J.shape
-        J = J.transpose(1, 3).transpose(1, 2) #(n, w_out, h_out, chunk, c, q, s)
+        J = J.transpose(1, 3).transpose(1, 2) #(n, h_out, w_out, chunk, c, q, s)
         grads = J.reshape(n*w*h, c, -1) #(n*w_out*h_out, chunk, c*q*s)
         #Clarify: Where is mean taken
         ajop += torch.einsum('ncd, ncD -> dD', grads, grads) #(c*q*s,c*q*s)
@@ -168,7 +171,7 @@ def get_grads(net, patchnet, trainloader,
             imgs = imgs.cuda()        
             # Run the first half of the network wrt to the current layer 
             imgs = net.features[:layer_idx](imgs).cpu() #(n,c,h,w)
-        patches = patchify(imgs, (q, s), (s1,s2), padding=(pad1,pad2))#(n,w_out,h_out,c,q,s)
+        patches = patchify(imgs, (q, s), (s1,s2), padding=(pad1,pad2))#(n,h_out,w_out,c,q,s)
         patches = patches.cuda()
         #print(patches.shape)
         M += egop(patchnet, patches).cpu()
