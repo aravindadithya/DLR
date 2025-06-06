@@ -121,6 +121,8 @@ def load_nn(net, init_net, layer_idx=0):
     patchnet.features[0] = layer
 
     count = -1
+    
+    #Todo: Directly get the weights from layer and avoid this loop. This is done in other verifiers like agop_fc
     for idx, p in enumerate(net.parameters()):
         
         # This logic of identifying layer_idx+1th parameters is not generic. It will fail if Batchnorm2d is present
