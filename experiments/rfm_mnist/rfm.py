@@ -1,6 +1,7 @@
 import numpy as np
 import torch
-from numpy.linalg import solve
+#from numpy.linalg import solve
+from torch.linalg import solve
 import kernels #Should be called from utils
 from tqdm import tqdm
 import hickle
@@ -110,7 +111,7 @@ def rfm(train_loader, val_loader, test_loader,
         M  = get_grads(X_train, sol, L, torch.from_numpy(M), batch_size=batch_size)
         if name is not None:
             hickle.dump(M, 'saved_Ms/M_' + name + '_' + str(i) + '.h')
-
+    '''
     K_train = laplace_kernel_M(X_train, X_train, L, torch.from_numpy(M)).numpy()
     sol = solve(K_train + reg * np.eye(len(K_train)), y_train).T
     K_test = laplace_kernel_M(X_train, X_test, L, torch.from_numpy(M)).numpy()
@@ -122,7 +123,8 @@ def rfm(train_loader, val_loader, test_loader,
     labels = torch.argmax(y_test, dim=-1)
     count = torch.sum(labels == preds).numpy()
     print(" Final Acc: ", count / len(labels))
-    return mse
+    '''
+    #return mse
 
 
 def get_data(loader):
