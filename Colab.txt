@@ -1,0 +1,3 @@
+!pip install visdom
+python -m visdom.server -port 8097
+!git clone https://github.com/aravindadithya/DLR
