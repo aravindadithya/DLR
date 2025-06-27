@@ -4,7 +4,7 @@ current_dir = os.getcwd()
 print(current_dir)
 parent_dir = os.path.abspath(os.path.join(current_dir, os.pardir, os.pardir))
 print(parent_dir)
-model_dir = os.path.join(parent_dir, 'trained_models', 'MNIST', 'model1', 'nn_models\\')
+model_dir = os.path.join(parent_dir, 'trained_models', 'MNIST', 'model1', 'nn_models/')
 print(model_dir)
 '''
 parent_dir='C:\\Users\\garav\\AGOP\\DLR'
