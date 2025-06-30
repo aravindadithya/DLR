@@ -88,7 +88,7 @@ class ResNet(nn.Module):
         self.in_planes = 23
         self.layers = [       
         P4MConvZ2(3, 23, kernel_size=3, stride=1, padding=1, bias=False),
-        nn.BatchNorm2d(23),
+        nn.BatchNorm3d(23),
         nn.ReLU()] + self._make_layer(block, 23, num_blocks[0], stride=1) + self._make_layer(block, 45, num_blocks[1], stride=2) + self._make_layer(block, 91, num_blocks[2], stride=2) + self._make_layer(block, 181, num_blocks[3], stride=2)
         self.features = nn.Sequential(*self.layers)
         

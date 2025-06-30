@@ -30,7 +30,7 @@ def visualize_M(M, idx):
     return F
 
 
-def train_network(train_loader, val_loader, test_loader, net, optimizer, lfn, root_path, device
+def train_network(train_loader, val_loader, test_loader, net, optimizer, lfn, root_path, device, 
                   num_classes=2, name=None, num_epochs = 5, 
                   save_frames=False):
 
@@ -77,14 +77,14 @@ def train_network(train_loader, val_loader, test_loader, net, optimizer, lfn, ro
             torch.save(d, file_path)
             net.to(device)
 
-        train_loss = train_step(net, optimizer, lfn, train_loader, save_frames=save_frames)
-        val_loss = val_step(net, val_loader, lfn)
-        test_loss = val_step(net, test_loader, lfn)
+        train_loss = train_step(net, device, optimizer, lfn, train_loader, save_frames=save_frames)
+        val_loss = val_step(net, device, val_loader, lfn)
+        test_loss = val_step(net, device, test_loader, lfn)
         
         #if (isinstance(lfn, nn.CrossEntropyLoss) or isinstance(lfn, nn.NLLLoss)):
-        train_acc = get_acc_ce(net, train_loader)
-        val_acc = get_acc_ce(net, val_loader)
-        test_acc = get_acc_ce(net, test_loader)
+        train_acc = get_acc_ce(net, device, train_loader)
+        val_acc = get_acc_ce(net, device, val_loader)
+        test_acc = get_acc_ce(net, device, test_loader)
         #elif(isinstance(lfn, nn.MSELoss)):
             #train_acc = get_acc_mse(net, train_loader)
             #val_acc = get_acc_mse(net, val_loader)
@@ -125,7 +125,7 @@ def get_data(loader):
     return torch.cat(X, dim=0), torch.cat(y, dim=0)
 
 
-def train_step(net, optimizer, lfn, train_loader, save_frames=False):
+def train_step(net, device, optimizer, lfn, train_loader, save_frames=False):
     net.train()
     start = time.time()
     train_loss = 0.
@@ -147,7 +147,7 @@ def train_step(net, optimizer, lfn, train_loader, save_frames=False):
     return train_loss
 
 
-def val_step(net, val_loader, lfn):
+def val_step(net, device, val_loader, lfn):
     net.eval()
     val_loss = 0.
 
@@ -164,7 +164,7 @@ def val_step(net, val_loader, lfn):
     return val_loss
 
 #TODO: Handle a single output net with MSE by rounding it. Unused function
-def get_acc_mse(net, loader):
+def get_acc_mse(net, device, loader):
     # This assumes the output of the network is the number of classes and the targets are one-hot vectors
     net.eval()
     count = 0
@@ -181,7 +181,7 @@ def get_acc_mse(net, loader):
         count += torch.sum(labels == preds).cpu().data.numpy()
     return count / len(loader.dataset) * 100
 
-def get_acc_ce(net, loader):
+def get_acc_ce(net, device, loader):
     net.eval()
     correct = 0
     total = 0
