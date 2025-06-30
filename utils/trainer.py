@@ -1,5 +1,6 @@
 # Functions here are taken from 
 #https://github.com/aradha/recursive_feature_machines
+#Todo: Replace Variable library.
 import torch
 from torch.autograd import Variable
 import torch.optim as optim
@@ -29,7 +30,7 @@ def visualize_M(M, idx):
     return F
 
 
-def train_network(train_loader, val_loader, test_loader, net, optimizer, lfn, root_path,
+def train_network(train_loader, val_loader, test_loader, net, optimizer, lfn, root_path, device
                   num_classes=2, name=None, num_epochs = 5, 
                   save_frames=False):
 
@@ -48,7 +49,7 @@ def train_network(train_loader, val_loader, test_loader, net, optimizer, lfn, ro
             params += size
     print("NUMBER OF PARAMS: ", params)
 
-    net.cuda()
+    net.to(device)
     best_val_acc = 0
     best_test_acc = 0
     #best_val_loss = np.float("inf")
@@ -63,7 +64,7 @@ def train_network(train_loader, val_loader, test_loader, net, optimizer, lfn, ro
                     M = p.data.numpy()
             M = M.T @ M
             visualize_M(M, i)
-            net.cuda()
+            net.to(device)
 
         if i == 0 or i == 1:
             net.cpu()
@@ -74,7 +75,7 @@ def train_network(train_loader, val_loader, test_loader, net, optimizer, lfn, ro
             else:
                 file_path = os.path.join(root_path, f'trained_nn_{i}.pth')
             torch.save(d, file_path)
-            net.cuda()
+            net.to(device)
 
         train_loss = train_step(net, optimizer, lfn, train_loader, save_frames=save_frames)
         val_loss = val_step(net, val_loader, lfn)
@@ -101,7 +102,7 @@ def train_network(train_loader, val_loader, test_loader, net, optimizer, lfn, ro
             else:
                 file_path = os.path.join(root_path, f'trained_nn.pth')
             torch.save(d, file_path)
-            net.cuda()
+            net.to(device)
 
         if val_loss <= best_val_loss:
             best_val_loss = val_loss
@@ -133,8 +134,8 @@ def train_step(net, optimizer, lfn, train_loader, save_frames=False):
         optimizer.zero_grad()
         inputs, labels = batch
         targets = labels
-        output = net(Variable(inputs).cuda())
-        target = Variable(targets).cuda()
+        output = net(Variable(inputs).to(device))
+        target = Variable(targets).to(device)
         #loss = torch.mean(torch.pow(output - target, 2))
         loss= lfn(output,target)
         loss.backward()
@@ -154,8 +155,8 @@ def val_step(net, val_loader, lfn):
         inputs, labels = batch
         targets = labels
         with torch.no_grad():
-            output = net(Variable(inputs).cuda())
-            target = Variable(targets).cuda()
+            output = net(Variable(inputs).to(device))
+            target = Variable(targets).to(device)
         #loss = torch.mean(torch.pow(output - target, 2))
         loss= lfn(output,target)
         val_loss += loss.cpu().data.numpy() * len(inputs)
@@ -171,8 +172,8 @@ def get_acc_mse(net, loader):
         inputs, targets = batch
         with torch.no_grad():
             #Variable is depreceated, use tensor
-            output = net(Variable(inputs).cuda())
-            target = Variable(targets).cuda()
+            output = net(Variable(inputs).to(device))
+            target = Variable(targets).to(device)
 
         preds = torch.argmax(output, dim=-1)
         labels = torch.argmax(target, dim=-1)
@@ -186,7 +187,7 @@ def get_acc_ce(net, loader):
     total = 0
     with torch.no_grad():
         for inputs, targets in loader:
-            inputs, targets = inputs.cuda(), targets.cuda()  # Move to CUDA consistently
+            inputs, targets = inputs.to(device), targets.to(device)  # Move to CUDA consistently
             outputs = net(inputs)
             _, predicted = torch.max(outputs.data, 1)  # Get predicted classes
             total += targets.size(0)
