@@ -80,7 +80,7 @@ def train_net(device):
         
     t.train_network(trainloader, valloader, testloader,
                     num_classes=10, root_path= model_dir, 
-                    optimizer= optim.SGD(net.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4),
+                    optimizer= torch.optim.SGD(net.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4),
                     lfn=  nn.CrossEntropyLoss(), 
                     num_epochs = 10,
                     name='cifar_gcnn', net=net, device=device)

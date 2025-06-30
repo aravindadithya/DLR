@@ -69,7 +69,7 @@ def get_untrained_net():
     net= model2.ResNet34()
     return net
 
-def train_net(): 
+def train_net(device): 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     net = get_untrained_net()
     trainloader, valloader, testloader = get_loaders()
@@ -80,10 +80,10 @@ def train_net():
         
     t.train_network(trainloader, valloader, testloader,
                     num_classes=10, root_path= model_dir, 
-                    optimizer= optim.SGD(net.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4),
+                    optimizer= torch.optim.SGD(net.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4),
                     lfn=  nn.CrossEntropyLoss(), 
                     num_epochs = 10,
-                    name='cifar_gcnn', net=net)
+                    name='cifar_gcnn', net=net, device=device)
 
 def main():
     train_net()
