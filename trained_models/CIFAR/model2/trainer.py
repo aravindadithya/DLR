@@ -4,7 +4,7 @@ import os
 current_dir = os.getcwd()
 print(current_dir)
 #parent_dir = os.path.abspath(os.path.join(current_dir, os.pardir, os.pardir))
-parent_dir = os.path.join(current_dir, 'DLR')
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
 print(parent_dir)
 model_dir = os.path.join(parent_dir, 'trained_models', 'CIFAR', 'model2', 'nn_models/')
 print(model_dir)
@@ -80,9 +80,9 @@ def train_net(device):
         
     t.train_network(trainloader, valloader, testloader,
                     num_classes=10, root_path= model_dir, 
-                    optimizer= torch.optim.SGD(net.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4),
+                    optimizer= torch.optim.SGD(net.parameters(), lr=0.001, momentum=0.9, weight_decay=5e-4),
                     lfn=  nn.CrossEntropyLoss(), 
-                    num_epochs = 10,
+                    num_epochs = 3,
                     name='cifar_gcnn', net=net, device=device)
 
 def main():

@@ -58,13 +58,13 @@ def train_network(train_loader, val_loader, test_loader, net, optimizer, lfn, ro
     os.makedirs(root_path, exist_ok=True)     
     for i in range(num_epochs):
         if save_frames:
-            #net.cpu()
+            net.cpu()
             for idx, p in enumerate(net.parameters()):
                 if idx == 0:
                     M = p.data.numpy()
             M = M.T @ M
             visualize_M(M, i)
-            #net.to(device)
+            net.to(device)
 
         if i == 0 or i == 1:
             net.cpu()
@@ -75,7 +75,7 @@ def train_network(train_loader, val_loader, test_loader, net, optimizer, lfn, ro
             else:
                 file_path = os.path.join(root_path, f'trained_nn_{i}.pth')
             torch.save(d, file_path)
-            #net.to(device)
+            net.to(device)
 
         train_loss = train_step(net, device, optimizer, lfn, train_loader, save_frames=save_frames)
         val_loss = val_step(net, device, val_loader, lfn)
@@ -94,7 +94,7 @@ def train_network(train_loader, val_loader, test_loader, net, optimizer, lfn, ro
         if val_acc >= best_val_acc:
             best_val_acc = val_acc
             best_test_acc = test_acc
-            #net.cpu()
+            net.cpu()
             d = {}
             d['state_dict'] = net.state_dict()
             if name is not None:
@@ -102,7 +102,7 @@ def train_network(train_loader, val_loader, test_loader, net, optimizer, lfn, ro
             else:
                 file_path = os.path.join(root_path, f'trained_nn.pth')
             torch.save(d, file_path)
-            #net.to(device)
+            net.to(device)
 
         if val_loss <= best_val_loss:
             best_val_loss = val_loss

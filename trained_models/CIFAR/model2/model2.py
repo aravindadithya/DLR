@@ -11,8 +11,8 @@ import sys
 import os
 current_dir = os.getcwd()
 #print(current_dir)
-parent_dir = os.path.join(current_dir, 'DLR')
-#print(parent_dir)
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+print(parent_dir)
 model_dir = os.path.join(parent_dir, 'trained_models', 'CIFAR', 'model2', 'nn_models/')
 #print(model_dir)
 
