@@ -1,24 +1,21 @@
-!pip install visdom
+sudo apt install git
+pip install visdom
+pip install hickle
+pip install scikit-learn
+pip install matplotlib
 python -m visdom.server -port 8097
-!git clone https://github.com/aravindadithya/DLR
 
-import sys
-import os
-current_dir = os.getcwd()
-print(current_dir)
+git clone --branch master_colab https://github.com/aravindadithya/DLR
+rm -r ~/.local/share/Trash
 
-#parent_dir = os.path.abspath(os.path.join(current_dir, os.pardir, os.pardir))
-parent_dir = os.path.join(current_dir, 'DLR')
-model_dir1 = os.path.join(parent_dir, 'trained_models', 'MNIST', 'model1', 'nn_models/')
-model_dir3 = os.path.join(parent_dir, 'trained_models', 'MNIST', 'model3', 'nn_models/')
+eval "$(ssh-agent -s)"
+ssh-keygen -t ed25519 -C "your_email@example.com"
+ssh-add ~/.ssh/*file_name_given_above*
+ls -l ~/.ssh/
 
-'''
-parent_dir='C:\\Users\\garav\\AGOP\\DLR'
-model_dir1= 'C:\\Users\\garav\\AGOP\\DLR\\trained_models\\MNIST\\model1\\nn_models\\'
-model_dir3= 'C:\\Users\\garav\\AGOP\\DLR\\trained_models\\MNIST\\model3\\nn_models\\'
-#parent_dir = os.path.abspath(os.path.join(os.getcwd(), os.pardir))
-'''
-sys.path.append(parent_dir)
-print(f"Parent directory: {parent_dir}")
-print(f"Model directory 1: {model_dir1}")
-print(f"Model directory 3: {model_dir3}")
+cat ~/.ssh/id_ed25519.pub
+copy to git
+
+ssh -T git@github.com
+git remote set-url origin git@github.com:aravindadithya/DLR.git
+git remotte -v

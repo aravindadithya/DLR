@@ -191,6 +191,7 @@ def min_max(M):
 
 
 def correlation(M1, M2):
+    #Todo: Get the means after cloning M1 and M2 like in agop_gcnn
     M1 -= M1.mean()
     M2 -= M2.mean()
 
