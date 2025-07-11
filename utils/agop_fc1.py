@@ -49,14 +49,16 @@ def sqrt(G):
 
 
 def correlation(M, G):
-    M -= M.mean()
-    G -= G.mean()
-    M = M.double()
-    G = G.double()
-    normM = norm(M.flatten())
-    normG = norm(G.flatten())
+    A = M.clone()
+    B = G.clone()
+    A -= A.mean()
+    B -= B.mean()
+    A = A.double()
+    B = B.double()
+    normM = norm(A.flatten())
+    normG = norm(B.flatten())
 
-    corr = torch.dot(M.flatten(), G.flatten()) / (normM * normG)
+    corr = torch.dot(A.flatten(), B.flatten()) / (normM * normG)
     return corr
 
 def egop(net, dataset, batch_size=800, cutoff=10, centering=False):
@@ -157,8 +159,7 @@ def verify_NFA(net, init_net, trainloader, layer_idx=0, batch_size=800, cutoff=1
     
     net, subnet_l, subnet_r, M, M0, l_idx = load_nn(net, init_net, layer_idx=layer_idx)
     print(M.shape)
-    i_val = correlation(M0.cuda(), M.cuda())
-    print("Correlation between Initial and Trained CNFM: ", i_val)
+
     
     out = get_layer_output(subnet_l.features, trainloader, layer_idx=layer_idx)
     G = egop(subnet_r, out, batch_size, cutoff, centering=True)
@@ -172,6 +173,8 @@ def verify_NFA(net, init_net, trainloader, layer_idx=0, batch_size=800, cutoff=1
     uncentered_correlation = correlation(M.to(device), G2.to(device))
     print("Full Matrix Correlation Centered: " , centered_correlation)
     print("Full Matrix Correlation Uncentered: " , uncentered_correlation)
+    i_val = correlation(M0.cuda(), M.cuda())
+    print("Correlation between Initial and Trained CNFM: ", i_val)
     #return Gop
 
 
