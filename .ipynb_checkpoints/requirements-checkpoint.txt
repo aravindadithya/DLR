@@ -1,0 +1,13 @@
+chainer==7.8.1
+cupy==13.5.1
+hickle==5.0.3
+matplotlib==3.10.3
+numpy==2.3.1
+scikit_learn==1.7.0
+scipy==1.16.0
+tensorflow==2.19.0
+torch==2.7.1
+torchmetrics==1.7.4
+torchvision==0.22.1
+tqdm==4.67.1
+visdom==0.2.4
