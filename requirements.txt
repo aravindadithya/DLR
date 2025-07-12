@@ -1,0 +1,8 @@
+hickle==5.0.3
+matplotlib
+scikit_learn
+scipy
+torchvision
+tqdm==4.67.1
+visdom==0.2.4
+torchmetrics
