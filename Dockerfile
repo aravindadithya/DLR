@@ -20,6 +20,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs && \
     python3 -m jupyterlab build --dev-build=False --minimize=True
 
+COPY . .
 
 FROM nvidia/cuda:12.5.0-base-ubuntu22.04
 
@@ -40,7 +41,7 @@ RUN chmod +x /usr/local/bin/start.sh
 
 WORKDIR /workspace
 
-COPY . .
+COPY --from=builder /workspace /workspace
 
 EXPOSE 8888 8097
 
