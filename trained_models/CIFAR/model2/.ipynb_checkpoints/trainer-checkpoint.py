@@ -1,16 +1,4 @@
-import sys
 import os
-
-current_dir = os.getcwd()
-print(current_dir)
-parent_dir = os.path.abspath(os.path.join(current_dir, os.pardir, os.pardir))
-print(parent_dir)
-model_dir = os.path.join(parent_dir, 'trained_models', 'CIFAR', 'model2', 'nn_models\\')
-print(model_dir)
-
-sys.path.append(parent_dir)
-
-
 import torch
 import torchvision
 import torchvision.transforms as transforms
@@ -72,8 +60,8 @@ def train_net():
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     net = get_untrained_net()
     trainloader, valloader, testloader = get_loaders()
-    if os.path.exists(model_dir+'mnist_gcnn_trained_nn.pth'):
-        checkpoint = torch.load(model_dir+'mnist_gcnn_trained_nn.pth', map_location=torch.device(device))
+    if os.path.exists(model_dir+'cifar_gcnn_trained_nn.pth'):
+        checkpoint = torch.load(model_dir+'cifar_gcnn_trained_nn.pth', map_location=torch.device(device))
         net.load_state_dict(checkpoint['state_dict'])  # Access the 'state_dict' within the loaded dictionary
         print("Model weights loaded successfully.")    
         
@@ -82,7 +70,7 @@ def train_net():
                     optimizer=torch.optim.SGD(net.parameters(), lr=0.02, momentum=0.5),
                     lfn=  nn.NLLLoss(), 
                     num_epochs = 10,
-                    name='mnist_gcnn', net=net)
+                    name='cifar_gcnn', net=net)
 
 def main():
     train_net()

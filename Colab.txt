@@ -2,7 +2,7 @@ GIT_LFS_SKIP_SMUDGE=1 git clone --branch research4 https://github.com/aravindadi
 
 cd DLR
 
-pip install "requirements.txt"
+pip install -r "requirements.txt"
 
 python -m visdom.server -port 8097
 
