@@ -1,61 +1,49 @@
-.git
+.git/                 # Use trailing slash for folders
 .gitignore
 .gitmodules
 .DS_Store
 Thumbs.db
-*.pt
-*.pth
-*.ckpt
-*.onnx
-*.h5 
-*.pb 
-*.tflite 
-*.tar 
+**/*.pt               # Applies to .pt files anywhere
+**/*.pth              # Applies to .pth files anywhere
+**/*.ckpt             # Applies to .ckpt files anywhere
+**/*.onnx             # Applies to .onnx files anywhere
+**/*.h5
+**/*.pb
+**/*.tflite
+**/*.tar
 checkpoints/
 models/
 runs/
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.so
-*.o
-*.a
+**/__pycache__/      # Applies to __pycache__ folders anywhere
+**/*.pyc              # Applies to .pyc files anywhere
+**/*.pyo
+**/*.pyd
+**/*.so
+**/*.o
+**/*.a
 build/
 dist/
-*.egg-info/
+**/*.egg-info/       # Applies to .egg-info folders anywhere
 .pytest_cache/
 .mypy_cache/
-*.h
-*.hpp
-*.hxx
-*.cxx
-*.cpp
-*.c
-.vscode/ 
-.idea/ 
-*.sublime-project
-*.sublime-workspace
+**/*.h                # Applies to .h files anywhere
+**/*.hpp
+**/*.hxx
+**/*.cxx
+**/*.cpp
+**/*.c
+.vscode/
+.idea/
+**/*.sublime-project
+**/*.sublime-workspace
 .project
 .settings/
-*.swp 
-*~
+**/*.swp
 venv/
 .venv/
 env/
 .env/
-*/venv/
-*/env/ 
-*.log
 logs/
-*.csv
-*.tsv
-*.json
-*.txt
 data/
 datasets/
 raw_data/
-Dockerfile
-.dockerignore
-README.md
-start.sh 
