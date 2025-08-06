@@ -18,6 +18,46 @@ is_port_in_use() {
 
 echo "--- Starting Services ---"
 
+# --- Update or Clone Repository ---
+# We perform this at startup to ensure the latest code is used.
+REPO_DIR="/work/DLR"
+REPO_URL="https://github.com/aravindadithya/DLR"
+REPO_BRANCH="research4"
+
+echo "Updating or cloning the repository from $REPO_URL..."
+git config --global --add safe.directory "$REPO_DIR"
+
+# Check if the repository directory already exists.
+if [ -d "$REPO_DIR" ]; then
+    echo "Repository directory found. Pulling latest changes..."
+    cd "$REPO_DIR" || { echo "Failed to change directory to $REPO_DIR. Exiting."; exit 1; }
+    
+    # Retry loop for git pull
+    count=0
+    while [ $count -lt 5 ]; do
+        GIT_LFS_SKIP_SMUDGE=1 git pull && break
+        count=$((count+1))
+        echo "Git pull failed, retrying ($count/5)..."
+        sleep 5
+    done
+    cd /work
+else
+    echo "Repository directory not found. Cloning the repository..."
+    cd /work || { echo "Failed to change directory to /workspace. Exiting."; exit 1; }
+    
+    # Retry loop for git clone
+    count=0
+    while [ $count -lt 5 ]; do
+        # Clone the repository with the specified branch. LFS smudge is not skipped.
+        GIT_LFS_SKIP_SMUDGE=1 git clone --branch research4 https://github.com/aravindadithya/DLR && break
+        count=$((count+1))
+        echo "Git clone failed, retrying ($count/5)..."
+        sleep 5
+    done
+    cd /work
+fi
+
+
 # --- Start Visdom Server ---
 VISDOM_PORT=8097
 echo "Attempting to start Visdom server on port $VISDOM_PORT..."
@@ -47,6 +87,3 @@ else
   echo "Jupyter Lab will be accessible via http://localhost:$JUPYTER_PORT/ (check logs for token)"
   exec python3 -m jupyterlab --port="$JUPYTER_PORT" --no-browser --allow-root --ip=0.0.0.0
 fi
-
-# Any commands placed here will NOT be executed if 'exec' is successful,
-# as 'exec' replaces the current process.
