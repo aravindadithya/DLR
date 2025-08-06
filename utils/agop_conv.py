@@ -190,7 +190,9 @@ def min_max(M):
     return (M - M.min()) / (M.max() - M.min())
 
 
-def correlation(M1, M2):
+def correlation(A, B):
+    M1 = A.clone()
+    M2 = B.clone()
     M1 -= M1.mean()
     M2 -= M2.mean()
 
@@ -206,10 +208,7 @@ def verify_NFA(net, init_net, trainloader, layer_idx=0):
     net, patchnet, M, M0, l_idx, conv_vals = load_nn(net,
                                                      init_net,
                                                      layer_idx=layer_idx)
-    (q, s), (pad1, pad2), (s1, s2) = conv_vals
-
-    i_val = correlation(M0, M)
-    print("Correlation between Initial and Trained CNFM: ", i_val)
+    (q, s), (pad1, pad2), (s1, s2) = conv_vals    
 
     G = get_grads(net, patchnet, trainloader,
                   kernel=(q, s),
@@ -219,9 +218,10 @@ def verify_NFA(net, init_net, trainloader, layer_idx=0):
     print("Shpae after gradients: ", G.shape)
     G = sqrt(G)
     Gop = G.clone()
-    r_val = correlation(M, G)
-    print("Correlation between Trained CNFM and AGOP: ", r_val)
-    print("Final: ", i_val, r_val)
+    
+    print("Correlation between Initial and Trained CNFM: ", correlation(M0, M))
+    print("Correlation between Initial CNFM and Trained AGOP: ", correlation(M0, G))
+    print("Correlation between Trained CNFM and Trained AGOP: ", correlation(M, G))
     return Gop 
     #return i_val.data.numpy(), r_val.data.numpy()
 

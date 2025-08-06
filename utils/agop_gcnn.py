@@ -254,23 +254,21 @@ def verify_NFA(net, init_net, trainloader, layer_idx=0):
                                                      init_net,
                                                      layer_idx=layer_idx)
     (q, s), (pad1, pad2), (s1, s2) = conv_vals
-    '''
-    i_val = correlation(M0, M)
-    print("Correlation between Initial and Trained CNFM: ", i_val)'''
+  
 
     G = get_grads(net, in_channels, input_stabilizer_size, patchnet, trainloader,
                   kernel=(q, s),
                   padding=(pad1, pad2),
                   stride=(s1, s2),
                   layer_idx=l_idx)
+    
     print("Shape after gradients: ", G.shape)
     G = sqrt(G)
     Gop = G.clone()
-    r_val = correlation(M, G)
-    print("Correlation between Trained Gcnn and AGOP: ", r_val)
     
-    i_val = correlation(M0, G)
-    print("Correlation between Un-trained Gcnn and AGOP: ", i_val)
+    print("Correlation between Initial and Trained CNFM: ", correlation(M0, M))
+    print("Correlation between Initial CNFM and Trained AGOP: ", correlation(M0, G))
+    print("Correlation between Trained CNFM and Trained AGOP: ", correlation(M, G))
 
     #print("Final: ", i_val, r_val)
     return Gop 
