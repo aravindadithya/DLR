@@ -31,16 +31,16 @@ class BasicBlock(nn.Module):
         super(BasicBlock, self).__init__()
         self.features= nn.Sequential(
         P4MConvP4M(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False),
-        nn.BatchNorm2d(planes),
+        nn.BatchNorm3d(planes),
         nn.ReLU(),
         P4MConvP4M(planes, planes, kernel_size=3, stride=1, padding=1, bias=False),
-        nn.BatchNorm2d(planes)
+        nn.BatchNorm3d(planes)
         )
         self.shortcut = nn.Sequential()
         if stride != 1 or in_planes != self.expansion*planes:
             self.shortcut = nn.Sequential(
                 P4MConvP4M(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(self.expansion*planes)
+                nn.BatchNorm3d(self.expansion*planes)
             )
         self.lrelu = nn.ReLU()
 
@@ -58,20 +58,20 @@ class Bottleneck(nn.Module):
         super(Bottleneck, self).__init__()
         self.features = nn.Sequential(
         P4MConvP4M(in_planes, planes, kernel_size=1, bias=False),
-        nn.BatchNorm2d(planes),
+        nn.BatchNorm3d(planes),
         nn.ReLU(),
         P4MConvP4M(planes, planes, kernel_size=3, stride=stride, padding=1, bias=False),
-        nn.BatchNorm2d(planes),
+        nn.BatchNorm3d(planes),
         nn.ReLU(),
         P4MConvP4M(planes, self.expansion*planes, kernel_size=1, bias=False),
-        nn.BatchNorm2d(self.expansion*planes)
+        nn.BatchNorm3d(self.expansion*planes)
         )
         
         self.shortcut = nn.Sequential()
         if stride != 1 or in_planes != self.expansion*planes:
             self.shortcut = nn.Sequential(
                 P4MConvP4M(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(self.expansion*planes)
+                nn.BatchNorm3d(self.expansion*planes)
             )
         self.lrelu = nn.ReLU()
 
@@ -88,7 +88,7 @@ class ResNet(nn.Module):
         self.in_planes = 23
         self.layers = [       
         P4MConvZ2(3, 23, kernel_size=3, stride=1, padding=1, bias=False),
-        nn.BatchNorm2d(23),
+        nn.BatchNorm3d(23),
         nn.ReLU()] + self._make_layer(block, 23, num_blocks[0], stride=1) + self._make_layer(block, 45, num_blocks[1], stride=2) + self._make_layer(block, 91, num_blocks[2], stride=2) + self._make_layer(block, 181, num_blocks[3], stride=2)
         self.features = nn.Sequential(*self.layers)
         
