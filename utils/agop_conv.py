@@ -68,7 +68,7 @@ class PatchConvLayer(nn.Module):
         #      2. Why does this output n,k,w,h when the standard format is n,k,h,w
         out = torch.einsum('nwhcqr, kcqr -> nwhk', patches, self.layer.weight)
         n, w, h, k = out.shape
-        out = out.transpose(1, 3).transpose(2, 3) #Should be (n,k,h_out,w_out) even though w and h are swapped
+        out = out.transpose(1, 3).transpose(2, 3) #Should be (n,k,h_out,w_out) even though the names w and h are swapped
         return out
 
 def get_jacobian(net, data, c_idx=0, chunk=100):
