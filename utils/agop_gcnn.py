@@ -83,7 +83,7 @@ class PatchConvLayer(nn.Module):
         #inds = make_c4_z2_indices(self.layer.ksize)
        
     def forward(self, patches):
-        if(len(patches.shape)==7)
+        if(len(patches.shape)==7):
             patches= patches[:,0,:,:,:,:,:]
         tw = trans_filter(self.layer.weight, self.layer.inds)
         tw_shape = (self.layer.out_channels * self.layer.output_stabilizer_size,
@@ -107,7 +107,7 @@ class PatchBasicBlock(nn.Module):
         self.layer = block_layer
 
     def forward(self, X):          
-        print(X.shape)
+        #print(X.shape)
         x1 = X[:,0,:,:,:,:,:] #(1,w_out, h_out, c, q, s)
         x2 = X[:,1,:,:,:,:,:] #(1,w_out, h_out, c, q, s)
         o = self.layer.features(x1)
@@ -301,7 +301,7 @@ def verify_NFA(net, init_net, trainloader, layer_idx=0, max_batches=2, classes=1
                   kernel=(q, s),
                   padding=(pad1, pad2),
                   stride=(s1, s2),
-                  layer_idx=l_idx, max_batches=2, classes=10, chunk_size=10)
+                  layer_idx=l_idx, max_batches=max_batches, classes=classes, chunk_size=chunk_size)
     
     print("Shape after gradients: ", G.shape)
     G = sqrt(G)
