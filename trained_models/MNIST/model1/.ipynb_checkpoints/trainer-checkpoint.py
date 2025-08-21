@@ -14,7 +14,7 @@ from torch.linalg import norm
 from torchvision import models
 import torch.nn as nn
 from utils import trainer as t
-
+from copy import deepcopy
 
 #device='cpu'
 #print(f"Using device: {device}")
@@ -140,21 +140,30 @@ def get_untrained_net():
     net = model1.Net(3072, num_classes=10)
     return net
 
-def train_net(): 
+def train_net(force_train=False): 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     net = get_untrained_net()
+    init_net = deepcopy(net)
     trainloader, valloader, testloader = get_loaders()
-    if os.path.exists(model_dir+'mnist_fc_trained_nn.pth'):
-        checkpoint = torch.load(model_dir+'mnist_fc_trained_nn.pth', map_location=torch.device(device))
-        net.load_state_dict(checkpoint['state_dict'])  # Access the 'state_dict' within the loaded dictionary
-        print("Model weights loaded successfully.")
+    model_dir = os.path.join('/work/DLR','trained_models', 'MNIST', 'model1', 'nn_models/')
+    path_exists = os.path.exists(model_dir +'mnist_fc_trained_nn.pth')
     
-    t.train_network(trainloader, valloader, testloader,
-                    num_classes=10, root_path= model_dir, 
-                    optimizer=torch.optim.SGD(net.parameters(), lr=.1),
-                    lfn=  nn.MSELoss(), 
-                    num_epochs = 10,
-                    name='mnist_fc', net=net)
+    if path_exists:
+        checkpoint = torch.load(model_dir +'mnist_fc_trained_nn.pth', weights_only=True)
+        net.load_state_dict(checkpoint['state_dict'])  # Access the 'state_dict' within the loaded dictionary
+        print("Model weights loaded successfully.")  
+        
+    if not path_exists or force_train:    
+        t.train_network(trainloader, valloader, testloader,
+                        num_classes=10, root_path= model_dir, 
+                        optimizer=torch.optim.SGD(net.parameters(), lr=.1),
+                        lfn=  nn.MSELoss(), 
+                        num_epochs = 10,
+                        name='mnist_fc', net=net)  
+       
+        
+    return trainloader, valloader, testloader, init_net, net
+    
 
 def main():
     train_net()

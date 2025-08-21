@@ -1,5 +1,6 @@
 import sys
 import os
+'''
 current_dir = os.getcwd()
 #print(current_dir)
 parent_dir = os.path.abspath(os.path.join(current_dir, os.pardir, os.pardir))
@@ -7,13 +8,7 @@ parent_dir = os.path.abspath(os.path.join(current_dir, os.pardir, os.pardir))
 model_dir = os.path.join(parent_dir, 'trained_models', 'MNIST', 'model4', 'nn_models\\')
 #print(model_dir)
 
-'''
-import sys
-parent_dir='C:\\Users\\garav\\AGOP\\DLR'
-model_dir= 'C:\\Users\\garav\\AGOP\\DLR\\trained_models\\MNIST\\model4\\nn_models\\'
-sys.path.append(parent_dir)
-import os'''
-sys.path.append(parent_dir)
+sys.path.append(parent_dir)'''
 
 import argparse
 import torch
