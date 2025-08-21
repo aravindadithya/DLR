@@ -9,14 +9,6 @@ Reference:
 
 import sys
 import os
-current_dir = os.getcwd()
-#print(current_dir)
-parent_dir = os.path.abspath(os.path.join(current_dir, os.pardir, os.pardir))
-#print(parent_dir)
-model_dir = os.path.join(parent_dir, 'trained_models', 'CIFAR', 'model2', 'nn_models\\')
-#print(model_dir)
-
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
