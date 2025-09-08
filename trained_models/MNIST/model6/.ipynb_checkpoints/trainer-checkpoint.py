@@ -7,7 +7,7 @@ import random
 import torch.backends.cudnn as cudnn
 import random
 import torch.backends.cudnn as cudnn
-from trained_models.MNIST.model5 import model5
+from trained_models.MNIST.model6 import model6
 import numpy as np
 from sklearn.model_selection import train_test_split
 from torch.linalg import norm
@@ -15,6 +15,7 @@ from torchvision import models
 import torch.nn as nn
 from utils import trainer as t
 from copy import deepcopy
+import torchvision.transforms.functional as F
 
 #from __future__ import print_function
 import argparse
@@ -23,12 +24,22 @@ from torch.autograd import Variable
 from sklearn.model_selection import train_test_split
 
 
+class DiscreteRandomRotation:
+    def __init__(self, degrees):
+        self.degrees = degrees
+
+    def __call__(self, img):
+        angle = random.choice(self.degrees)
+        return F.rotate(img, angle)
+    
+
 # ACCESS LOADERS
 def get_loaders():
     SEED = 5700
     transform = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize((0.1307,), (0.3081,))  # Mean and standard deviation for MNIST
+            transforms.Normalize((0.1307,), (0.3081,)),  # Mean and standard deviation for MNIST
+            DiscreteRandomRotation(degrees=[0, 90, 180, 270])
         ])
     
     trainset = torchvision.datasets.MNIST(root='./data', train=True, download=True, transform=transform)
@@ -43,7 +54,7 @@ def get_loaders():
 
 #GET NET
 def get_untrained_net():
-    net= model5.ConvNet()
+    net= model6.ConvNet()
     return net
 
 def train_net(force_train=False): 
@@ -51,7 +62,7 @@ def train_net(force_train=False):
     net = get_untrained_net()
     init_net = deepcopy(net)
     trainloader, valloader, testloader = get_loaders()
-    model_dir= os.path.join('/work/DLR','trained_models', 'MNIST', 'model5', 'nn_models/')   
+    model_dir= os.path.join('/work/DLR','trained_models', 'MNIST', 'model6', 'nn_models/')   
     path_exists = os.path.exists(model_dir + 'mnist_conv_trained_nn.pth')
 
     if path_exists:
@@ -62,7 +73,7 @@ def train_net(force_train=False):
     if not path_exists or force_train:
         t.train_network(trainloader, valloader, testloader,
                         num_classes=10, root_path= model_dir, 
-                        optimizer=torch.optim.SGD(net.parameters(), lr=0.02, momentum=0.5),
+                        optimizer=torch.optim.SGD(net.parameters(), lr=0.05, momentum=0.5),
                         lfn=  nn.NLLLoss(), 
                         num_epochs = 10,
                         name='mnist_conv', net=net)

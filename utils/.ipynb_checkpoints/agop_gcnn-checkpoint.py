@@ -83,7 +83,7 @@ class PatchConvLayer(nn.Module):
         #inds = make_c4_z2_indices(self.layer.ksize)
        
     def forward(self, patches):
-        if(len(patches.shape)==7)
+        if(len(patches.shape)==7):
             patches= patches[:,0,:,:,:,:,:]
         tw = trans_filter(self.layer.weight, self.layer.inds)
         tw_shape = (self.layer.out_channels * self.layer.output_stabilizer_size,
@@ -107,7 +107,7 @@ class PatchBasicBlock(nn.Module):
         self.layer = block_layer
 
     def forward(self, X):          
-        print(X.shape)
+        #print(X.shape)
         x1 = X[:,0,:,:,:,:,:] #(1,w_out, h_out, c, q, s)
         x2 = X[:,1,:,:,:,:,:] #(1,w_out, h_out, c, q, s)
         o = self.layer.features(x1)
@@ -287,7 +287,7 @@ def correlation(A, B):
     return torch.sum(M1.cuda() * M2.cuda()) / (norm1 * norm2)
 
 
-def verify_NFA(net, init_net, trainloader, layer_idx=0, max_batches=2, classes=10, chunk_size=10):
+def verify_NFA(net, init_net, trainloader, layer_idx=0, max_batches=2, classes=10, chunk_size=10, alpha=0.5):
 
     #net = net.double()
     #init_net = init_net.double()
@@ -301,10 +301,11 @@ def verify_NFA(net, init_net, trainloader, layer_idx=0, max_batches=2, classes=1
                   kernel=(q, s),
                   padding=(pad1, pad2),
                   stride=(s1, s2),
-                  layer_idx=l_idx, max_batches=2, classes=10, chunk_size=10)
+                  layer_idx=l_idx, max_batches=max_batches, classes=classes, chunk_size=chunk_size)
     
     print("Shape after gradients: ", G.shape)
-    G = sqrt(G)
+    #G = sqrt(G)
+    G = sqrt(G, alpha)
     Gop = G.clone()
     
     print("Correlation between Initial and Trained CNFM: ", correlation(M0, M))
@@ -322,6 +323,18 @@ def sqrt(G):
     s = torch.pow(s, 1./2)
     G = U @ torch.diag(s) @ Vt
     return G
+
+def matrix_power_eigendecomposition(G, alpha):      
+    eigenvalues, eigenvectors = torch.linalg.eigh(G)    
+    # Raise the eigenvalues to the power alpha
+    # Clamp to zero to handle potential small negative eigenvalues due to
+    # floating-point inaccuracies, which would result in NaN for fractional powers.
+    powered_eigenvalues = torch.clamp_min(eigenvalues, 0).pow(alpha)
+    V = eigenvectors
+    Lambda_powered = torch.diag(powered_eigenvalues)
+    powered_matrix = V @ Lambda_powered @ V.T
+    
+    return powered_matrix
 
 
 #TODO: ADD a visualizer for the image
