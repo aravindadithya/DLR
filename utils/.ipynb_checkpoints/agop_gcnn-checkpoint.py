@@ -37,7 +37,7 @@ vis.close(env='main')
 
 def patchify(x, in_channels, ip_stab, patch_size, stride_size, padding=None, pad_type='zeros'):
     '''
-        Given an input image (n,c,h,w) generate (n,w_out,h_out,c,q,s) respecting stride,padding, 
+        Given an input image (bs,c,h,w) generate (bs,w_out,h_out,c,q,s) respecting stride,padding, 
         w_out is number of pathces along the width for the given stride after padding
         h_out is number of pathces along the height for the given stride after padding
         (q,s) is the kernel dimensions 
@@ -62,9 +62,9 @@ def patchify(x, in_channels, ip_stab, patch_size, stride_size, padding=None, pad
     elif pad_type == 'circular':
         x = pad(x, pad_dims, 'circular')
         
-    patches = x.unfold(2, q1, s1).unfold(3, q2, s2) #(n, c, h_out, w_out, q, s)
+    patches = x.unfold(2, q1, s1).unfold(3, q2, s2) #(bs, c, h_out, w_out, q, s)
     #print("Image Shape1",patches.shape)
-    patches = patches.transpose(1, 3).transpose(1, 2) #(n,w_out,h_out,c,q,s) 
+    patches = patches.transpose(1, 3).transpose(1, 2) #(bs,w_out,h_out,c,q,s) 
     #print("Image Shape2",patches.shape)
     return patches
 
@@ -125,24 +125,27 @@ def get_jacobian(net, data, c_idx=0, chunk=100):
             # x is (2, w_out,h_out,c,q,s)
             return net(X.unsqueeze(0))[:,c_idx*chunk:(c_idx+1)*chunk].squeeze(0)
         # Parallelize across the images.
-        #data: (n, 2, w_out, h_out, c, q, s)
-        return torch.vmap(jacrev(single_net))(data) #(n, chunk, 2, w_out, h_out, c, q, s)
+        #data: (bs, 2, w_out, h_out, c, q, s)
+        return torch.vmap(jacrev(single_net))(data) #(bs, chunk, 2, w_out, h_out, c, q, s)
 
 def egop(model, z, classes=10, chunk_idxs=10):
     ajop = 0
     c = classes
     #Chunking is done to compute jacobian as sum of smaller size matrices using outer product. This saves memory
     chunk = c // chunk_idxs
+    chunk_list = []
     for i in range(chunk_idxs):
         J = get_jacobian(model, z, c_idx=i, chunk=chunk) #(n, chunk, 2, w_out, h_out, c, q, s)
         J= J[:,:,0,:,:,:,:,:]
         n, c, w, h, _, _, _ = J.shape
         J = J.transpose(1, 3).transpose(1, 2) #(n, w_out, h_out, chunk, c, q, s)
         grads = J.reshape(n*w*h, c, -1) #(n*w_out*h_out, chunk, c*q*s)
-        #Clarify: Where is mean taken
-        ajop += torch.einsum('ncd, ncD -> dD', grads, grads) #(c*q*s,c*q*s)
-        del J, grads
-        torch.cuda.empty_cache()
+        chunk_list.append(grads)
+        #Clarify: Where is mean taken      
+        #ajop += torch.einsum('ncd, ncD -> dD', grads, grads) #(c*q*s,c*q*s)
+        #del J, grads
+        #torch.cuda.empty_cache()
+    return torch.cat(chunk_list, dim=1)
     return ajop
 
 
@@ -237,35 +240,63 @@ def load_nn(net, init_net, layer_idx=0):
 
 def get_grads(net, in_channels, input_stabilizer_size, patchnet, trainloader,
               kernel=(3,3), padding=(1,1),
-              stride=(1,1), layer_idx=0, max_batches=2, classes=10, chunk_size=10):
+              stride=(1,1), layer_idx=0, max_batches=2, classes=10, chunk_size=10, centering=True):
     net.eval()
     net.cuda()
     patchnet.eval()
     patchnet.cuda()
-    M = 0
     q, s = kernel
     pad1, pad2 = padding
     s1, s2 = stride
-    for idx, batch in enumerate(trainloader):
-        print("Computing GOP for sample " + str(idx) + \
-              " out of " + str(max_batches))
-        imgs, _ = batch
-        #imgs= imgs.double()
-        with torch.no_grad():
-            imgs = imgs.cuda()        
-            # Run the first half of the network wrt to the current layer 
-            imgs = net.features[:layer_idx](imgs).cpu() #(n,c,h,w)
-        patches = patchify(imgs, in_channels, input_stabilizer_size, 
-                           (q, s), (s1,s2), padding=(pad1,pad2))#(n,w_out,h_out,c,q,s)
-        p_copy = deepcopy(patches)
-        patches = patches.cuda()
-        p_copy = p_copy.cuda()
-        c_patches = torch.stack([patches, p_copy], dim=1) #(n,2,w_out,h_out,c,q,s)
-        M += egop(patchnet, c_patches, classes, chunk_size).cpu()
-        del imgs, patches, p_copy, c_patches
+
+    Js=[]
+    M = 0
+    ajop = 0
+    c = classes
+    #Chunking is done to compute jacobian as sum of smaller size matrices using outer product. This saves memory
+    chunk = c // chunk_size
+    chunk_list = []
+
+    for i in range(chunk_size):
+        chunk_list = []
+        #print("************* Chunk"+str(i)+"*************")
+        for idx, batch in enumerate(trainloader):
+            #print("Computing GOP for sample " + str(idx) + \
+                  #" out of " + str(max_batches))
+            imgs, _ = batch
+            #imgs= imgs.double()
+            with torch.no_grad():
+                imgs = imgs.cuda()        
+                # Run the first half of the network wrt to the current layer 
+                imgs = net.features[:layer_idx](imgs).cpu() #(bs,c,h,w)
+            patches = patchify(imgs, in_channels, input_stabilizer_size, 
+                               (q, s), (s1,s2), padding=(pad1,pad2))#(bs,w_out,h_out,c,q,s)
+            p_copy = deepcopy(patches)
+            patches = patches.cuda()
+            p_copy = p_copy.cuda()
+            c_patches = torch.stack([patches, p_copy], dim=1) #(bs,2,w_out,h_out,c,q,s)
+            J = get_jacobian(patchnet, c_patches, c_idx=i, chunk=chunk)
+            J= J[:,:,0,:,:,:,:,:]
+            n, c, w, h, _, _, _ = J.shape
+            J = J.transpose(1, 3).transpose(1, 2) #(bs, w_out, h_out, chunk, c, q, s)
+            grads = J.reshape(n*w*h, c, -1) #(bs*w_out*h_out, chunk, c*q*s)
+            chunk_list.append(grads)      
+            #M += egop(patchnet, c_patches, classes, chunk_size).cpu()
+            #Js.append(egop(patchnet, c_patches, classes, chunk_size).cpu()) 
+            del imgs, patches, p_copy, c_patches
+            torch.cuda.empty_cache()
+            if idx >= max_batches:
+                break
+        Js = torch.cat(chunk_list, dim=0) #(n*w_out*h_out, chunk, c*q*s)
+        if centering:
+            #print("Centering")
+            J_mean = torch.mean(Js, dim=0).unsqueeze(0) #(1, chunk, c*q*s)
+            Js = Js - J_mean
+        #n, c, d = Js.shape
+        M+= torch.einsum('ncd, ncD -> dD', Js , Js).cpu() #(c*q*s,c*q*s)
+        del Js
         torch.cuda.empty_cache()
-        if idx >= max_batches:
-            break
+        
     net.cpu()
     patchnet.cpu()
     return M
@@ -287,7 +318,7 @@ def correlation(A, B):
     return torch.sum(M1.cuda() * M2.cuda()) / (norm1 * norm2)
 
 
-def verify_NFA(net, init_net, trainloader, layer_idx=0, max_batches=2, classes=10, chunk_size=10, alpha=0.5):
+def verify_NFA(net, init_net, trainloader, layer_idx=0, max_batches=2, classes=10, chunk_size=10, alpha=0.5, centering= True):
 
     #net = net.double()
     #init_net = init_net.double()
@@ -301,11 +332,11 @@ def verify_NFA(net, init_net, trainloader, layer_idx=0, max_batches=2, classes=1
                   kernel=(q, s),
                   padding=(pad1, pad2),
                   stride=(s1, s2),
-                  layer_idx=l_idx, max_batches=max_batches, classes=classes, chunk_size=chunk_size)
+                  layer_idx=l_idx, max_batches=max_batches, classes=classes, chunk_size=chunk_size, centering=centering)
     
     print("Shape after gradients: ", G.shape)
     #G = sqrt(G)
-    G = sqrt(G, alpha)
+    G = matrix_power_eigendecomposition(G, alpha)
     Gop = G.clone()
     
     print("Correlation between Initial and Trained CNFM: ", correlation(M0, M))
@@ -313,7 +344,7 @@ def verify_NFA(net, init_net, trainloader, layer_idx=0, max_batches=2, classes=1
     print("Correlation between Trained CNFM and Trained AGOP: ", correlation(M, G))
 
     #print("Final: ", i_val, r_val)
-    return Gop 
+    return (Gop, correlation(M, G))
     #return i_val.data.numpy(), r_val.data.numpy()
 
 
