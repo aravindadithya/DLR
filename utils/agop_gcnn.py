@@ -256,10 +256,12 @@ def get_grads(net, in_channels, input_stabilizer_size, patchnet, trainloader,
     #Chunking is done to compute jacobian as sum of smaller size matrices using outer product. This saves memory
     chunk = c // chunk_size
     chunk_list = []
+   # bs = len(list(trainloader)[0]) 
+    bs=128
 
     for i in range(chunk_size):
         chunk_list = []
-        #print("************* Chunk"+str(i)+"*************")
+        print("************* Chunk"+str(i)+"*************")
         for idx, batch in enumerate(trainloader):
             #print("Computing GOP for sample " + str(idx) + \
                   #" out of " + str(max_batches))
@@ -280,20 +282,38 @@ def get_grads(net, in_channels, input_stabilizer_size, patchnet, trainloader,
             n, c, w, h, _, _, _ = J.shape
             J = J.transpose(1, 3).transpose(1, 2) #(bs, w_out, h_out, chunk, c, q, s)
             grads = J.reshape(n*w*h, c, -1) #(bs*w_out*h_out, chunk, c*q*s)
+            #grads = grads.cpu()
             chunk_list.append(grads)      
             #M += egop(patchnet, c_patches, classes, chunk_size).cpu()
             #Js.append(egop(patchnet, c_patches, classes, chunk_size).cpu()) 
-            del imgs, patches, p_copy, c_patches
+            del imgs, patches, p_copy, c_patches, grads
             torch.cuda.empty_cache()
             if idx >= max_batches:
                 break
         Js = torch.cat(chunk_list, dim=0) #(n*w_out*h_out, chunk, c*q*s)
+        batches = torch.split(Js, bs)
         if centering:
             #print("Centering")
-            J_mean = torch.mean(Js, dim=0).unsqueeze(0) #(1, chunk, c*q*s)
-            Js = Js - J_mean
-        #n, c, d = Js.shape
-        M+= torch.einsum('ncd, ncD -> dD', Js , Js).cpu() #(c*q*s,c*q*s)
+            for batch_idx, J in enumerate(batches):
+                 J = J.cuda()
+                 J_mean = torch.sum(Js, dim=0).unsqueeze(0) #(1, chunk, c*q*s)
+                 del J
+            J_mean= J_mean*1/Js.shape[0]
+            grads = []
+            for batch_idx, J in enumerate(batches):
+                 J = J.cuda()
+                 grads.append((J - J_mean).cpu())
+                 del J  
+            Js = torch.cat(grads, dim=0)
+            del J_mean
+            
+        batches = torch.split(Js, bs)     
+        for batch_idx, J in enumerate(batches):
+            #print(batch_idx, len(batches))
+            J = J.cuda()
+            M += torch.einsum('ncd,mcD->dD', J, J).cpu()
+            del J
+        M = M * 1/Js.shape[0]
         del Js
         torch.cuda.empty_cache()
         
