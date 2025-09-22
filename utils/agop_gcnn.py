@@ -249,9 +249,11 @@ def get_grads(net, in_channels, input_stabilizer_size, patchnet, trainloader,
     pad1, pad2 = padding
     s1, s2 = stride
 
-    Js=[]
     M = 0
     ajop = 0
+    J_sum=0
+    n=0
+    
     c = classes
     #Chunking is done to compute jacobian as sum of smaller size matrices using outer product. This saves memory
     chunk = c // chunk_size
@@ -260,7 +262,8 @@ def get_grads(net, in_channels, input_stabilizer_size, patchnet, trainloader,
     bs=128
 
     for i in range(chunk_size):
-        chunk_list = []
+        grads = []
+        J_sum=0
         print("************* Chunk"+str(i)+"*************")
         for idx, batch in enumerate(trainloader):
             #print("Computing GOP for sample " + str(idx) + \
@@ -279,47 +282,36 @@ def get_grads(net, in_channels, input_stabilizer_size, patchnet, trainloader,
             c_patches = torch.stack([patches, p_copy], dim=1) #(bs,2,w_out,h_out,c,q,s)
             J = get_jacobian(patchnet, c_patches, c_idx=i, chunk=chunk)
             J= J[:,:,0,:,:,:,:,:]
-            n, c, w, h, _, _, _ = J.shape
+            bs, c, w, h, _, _, _ = J.shape
+            print(J.shape)
             J = J.transpose(1, 3).transpose(1, 2) #(bs, w_out, h_out, chunk, c, q, s)
-            grads = J.reshape(n*w*h, c, -1) #(bs*w_out*h_out, chunk, c*q*s)
-            #grads = grads.cpu()
-            chunk_list.append(grads)      
+            J = J.reshape(bs*w*h, c, -1) #(bs*w_out*h_out, chunk, c*q*s)
+            if centering:
+                J_sum += torch.sum(J, dim=0).unsqueeze(0)  
+            J= J.cpu()
+            grads.append(J)          
+            n += bs         
             #M += egop(patchnet, c_patches, classes, chunk_size).cpu()
             #Js.append(egop(patchnet, c_patches, classes, chunk_size).cpu()) 
-            del imgs, patches, p_copy, c_patches, grads
+            del imgs, patches, p_copy, c_patches, J
             torch.cuda.empty_cache()
             if idx >= max_batches:
                 break
-        Js = torch.cat(chunk_list, dim=0) #(n*w_out*h_out, chunk, c*q*s)
-        batches = torch.split(Js, bs)
+       
         if centering:
-            #print("Centering")
-            for batch_idx, J in enumerate(batches):
-                 J = J.cuda()
-                 J_mean = torch.sum(Js, dim=0).unsqueeze(0) #(1, chunk, c*q*s)
-                 del J
-            J_mean= J_mean*1/Js.shape[0]
-            grads = []
-            for batch_idx, J in enumerate(batches):
-                 J = J.cuda()
-                 grads.append((J - J_mean).cpu())
-                 del J  
-            Js = torch.cat(grads, dim=0)
-            del J_mean
+            J_mean = J_sum*1/(n*w*h) #(1, chunk, c*q*s)
             
-        batches = torch.split(Js, bs)     
-        for batch_idx, J in enumerate(batches):
-            #print(batch_idx, len(batches))
+        for batch_idx, J in enumerate(grads):
             J = J.cuda()
-            M += torch.einsum('ncd,mcD->dD', J, J).cpu()
+            if centering:
+                J= J- J_mean
+            M += torch.einsum('ncd,ncD->dD', J, J).cpu()
             del J
-        M = M * 1/Js.shape[0]
-        del Js
         torch.cuda.empty_cache()
         
     net.cpu()
     patchnet.cpu()
-    return M
+    return M*1/n
 
 
 def min_max(M):

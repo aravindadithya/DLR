@@ -73,7 +73,7 @@ def train_net(force_train=False):
         t.train_network(trainloader, valloader, testloader,
                         num_classes=10, root_path= model_dir, 
                         optimizer=torch.optim.SGD(net.parameters(), lr=0.02, momentum=0.5),
-                        lfn=  nn.NLLLoss(), 
+                        lfn=  nn.CrossEntropyLoss(), 
                         num_epochs = 10,
                         name='cifar_gcnn', net=net)
     return trainloader, valloader, testloader, init_net, net
