@@ -39,12 +39,12 @@ def get_loaders():
         transforms.Normalize(means, (0.2023, 0.1994, 0.2010)),
     ])
 
-    trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_train)
+    trainset = torchvision.datasets.CIFAR10(root='/work/DLR/trained_models/CIFAR/data', train=True, download=True, transform=transform_train)
     trainset, valset = train_test_split(trainset, train_size=0.8)
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=128, shuffle=True, num_workers=2)
     valloader = torch.utils.data.DataLoader(valset, batch_size=100,
                                                 shuffle=False, num_workers=1)
-    testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform_test)
+    testset = torchvision.datasets.CIFAR10(root='/work/DLR/trained_models/CIFAR/data', train=False, download=True, transform=transform_test)
     testloader = torch.utils.data.DataLoader(testset, batch_size=100, shuffle=False, num_workers=2)
 
     #classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
@@ -73,7 +73,7 @@ def train_net(force_train=False):
         t.train_network(trainloader, valloader, testloader,
                         num_classes=10, root_path= model_dir, 
                         optimizer=torch.optim.SGD(net.parameters(), lr=0.02, momentum=0.5),
-                        lfn=  nn.NLLLoss(), 
+                        lfn=  nn.CrossEntropyLoss(), 
                         num_epochs = 10,
                         name='cifar_gcnn', net=net)
     return trainloader, valloader, testloader, init_net, net

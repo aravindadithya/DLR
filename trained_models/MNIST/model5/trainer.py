@@ -31,13 +31,14 @@ def get_loaders():
             transforms.Normalize((0.1307,), (0.3081,))  # Mean and standard deviation for MNIST
         ])
     
-    trainset = torchvision.datasets.MNIST(root='./data', train=True, download=True, transform=transform)
+    path= '/work/DLR/trained_models/MNIST/data' 
+    trainset = torchvision.datasets.MNIST(root= path, train=True, download=True, transform=transform)
     trainset, valset = train_test_split(trainset, train_size=0.8)
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=64, shuffle=False, num_workers=2)
     valloader = torch.utils.data.DataLoader(valset, batch_size=100,
                                                 shuffle=False, num_workers=1)
     
-    testset = torchvision.datasets.MNIST(root='./data', train=False, download=True, transform=transform)
+    testset = torchvision.datasets.MNIST(root= path, train=False, download=True, transform=transform)
     testloader = torch.utils.data.DataLoader(testset, batch_size=64, shuffle=False, num_workers=2)
     return trainloader, valloader, testloader
 
@@ -46,7 +47,7 @@ def get_untrained_net():
     net= model5.ConvNet()
     return net
 
-def train_net(orce_train=False): 
+def train_net(force_train=False): 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     net = get_untrained_net()
     init_net = deepcopy(net)
@@ -55,7 +56,7 @@ def train_net(orce_train=False):
     path_exists = os.path.exists(model_dir + 'mnist_conv_trained_nn.pth')
 
     if path_exists:
-        checkpoint = torch.load(model_dir+'mnist_conv_trained_nn.pth', map_location=torch.device(device))
+        checkpoint = torch.load(model_dir+'mnist_conv_trained_nn.pth', weights_only=True)
         net.load_state_dict(checkpoint['state_dict'])  # Access the 'state_dict' within the loaded dictionary
         print("Model weights loaded successfully.")    
 
@@ -66,6 +67,7 @@ def train_net(orce_train=False):
                         lfn=  nn.NLLLoss(), 
                         num_epochs = 10,
                         name='mnist_conv', net=net)
+    return trainloader, valloader, testloader, init_net, net
 
 def main():
     train_net()
