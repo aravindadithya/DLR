@@ -41,14 +41,15 @@ def get_loaders():
             transforms.Normalize((0.1307,), (0.3081,)),  # Mean and standard deviation for MNIST
             DiscreteRandomRotation(degrees=[0, 90, 180, 270])
         ])
-    
-    trainset = torchvision.datasets.MNIST(root='./data', train=True, download=True, transform=transform)
+
+    path= '/work/DLR/trained_models/MNIST/data' 
+    trainset = torchvision.datasets.MNIST(root= path, train=True, download=True, transform=transform)
     trainset, valset = train_test_split(trainset, train_size=0.8)
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=64, shuffle=False, num_workers=2)
     valloader = torch.utils.data.DataLoader(valset, batch_size=100,
                                                 shuffle=False, num_workers=1)
     
-    testset = torchvision.datasets.MNIST(root='./data', train=False, download=True, transform=transform)
+    testset = torchvision.datasets.MNIST(root= path, train=False, download=True, transform=transform)
     testloader = torch.utils.data.DataLoader(testset, batch_size=64, shuffle=False, num_workers=2)
     return trainloader, valloader, testloader
 

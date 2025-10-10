@@ -106,7 +106,7 @@ def get_loaders():
          transforms.Lambda(repeat_channel)]
     )
     
-    path= './data'  
+    path= '/work/DLR/trained_models/MNIST/data'   
         
     mnist_trainset = torchvision.datasets.MNIST(root=path,
                                                     train=True,
