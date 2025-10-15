@@ -118,9 +118,9 @@ def get_loaders():
     print("Train Size: ", len(trainset), "Val Size: ", len(valset))
     
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=100,
-                                                  shuffle=True, num_workers=2)
+                                                  shuffle=True, num_workers=2,pin_memory=True)
     valloader = torch.utils.data.DataLoader(valset, batch_size=100,
-                                                shuffle=False, num_workers=1)
+                                                shuffle=False, num_workers=1, pin_memory=True)
     
     
     mnist_testset = torchvision.datasets.MNIST(root=path,
@@ -131,7 +131,7 @@ def get_loaders():
     print("Test Size: ", len(mnist_testset))
     testset = merge_data(mnist_testset, 900)
     testloader = torch.utils.data.DataLoader(testset, batch_size=128,
-                                                 shuffle=False, num_workers=2)
+                                                 shuffle=False, num_workers=2, pin_memory=True)
 
     return trainloader, valloader, testloader
 
@@ -151,9 +151,11 @@ def train_net(force_train=False):
     if path_exists:
         checkpoint = torch.load(model_dir +'mnist_fc_trained_nn.pth', weights_only=True)
         net.load_state_dict(checkpoint['state_dict'])  # Access the 'state_dict' within the loaded dictionary
+        checkpoint = torch.load(model_dir+'mnist_fc_trained_nn_0.pth', weights_only=True)
+        init_net.load_state_dict(checkpoint['state_dict'])
         print("Model weights loaded successfully.")  
         
-    if not path_exists or force_train:    
+    if not path_exists or force_train:   
         t.train_network(trainloader, valloader, testloader,
                         num_classes=10, root_path= model_dir, 
                         optimizer=torch.optim.SGD(net.parameters(), lr=.1),

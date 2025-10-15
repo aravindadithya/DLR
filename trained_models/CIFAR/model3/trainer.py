@@ -6,7 +6,7 @@ from torch.utils.data import Dataset
 import random
 import torch.backends.cudnn as cudnn
 import random
-from trained_models.CIFAR.model2 import model3
+from trained_models.CIFAR.model3 import model3
 import numpy as np
 from sklearn.model_selection import train_test_split
 from torch.linalg import norm
@@ -40,11 +40,11 @@ def get_loaders():
 
     trainset = torchvision.datasets.CIFAR10(root='/work/DLR/trained_models/CIFAR/data', train=True, download=True, transform=transform_train)
     trainset, valset = train_test_split(trainset, train_size=0.8)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=128, shuffle=True, num_workers=2)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=128, shuffle=True, num_workers=10, pin_memory=True)
     valloader = torch.utils.data.DataLoader(valset, batch_size=100,
-                                                shuffle=False, num_workers=1)
+                                                shuffle=False, num_workers=10,pin_memory=True)
     testset = torchvision.datasets.CIFAR10(root='/work/DLR/trained_models/CIFAR/data', train=False, download=True, transform=transform_test)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=100, shuffle=False, num_workers=2)
+    testloader = torch.utils.data.DataLoader(testset, batch_size=100, shuffle=False, num_workers=10, pin_memory=True)
 
     #classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
@@ -55,7 +55,7 @@ def get_untrained_net():
     net= model3.ResNet18()
     return net
 
-def train_net(force_train=False, num_epochs=10): 
+def train_net(force_train=False): 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     net = get_untrained_net()
     init_net = deepcopy(net)
@@ -75,19 +75,19 @@ def train_net(force_train=False, num_epochs=10):
                         num_classes=10, root_path= model_dir, 
                         optimizer=torch.optim.SGD(net.parameters(), lr=0.02, momentum=0.5),
                         lfn=  nn.CrossEntropyLoss(), 
-                        num_epochs = num_epochs,
+                        num_epochs = 10,
                         name='cifar_gcnn', net=net)
             
     elif not path_exists and not init_path_exists:
-        d = {}
-        d['state_dict'] = init_net.state_dict()
-        torch.save(d, model_dir + 'cifar_gcnn_init_nn.pth')
         t.train_network(trainloader, valloader, testloader,
                         num_classes=10, root_path= model_dir, 
                         optimizer=torch.optim.SGD(net.parameters(), lr=0.02, momentum=0.5),
                         lfn=  nn.CrossEntropyLoss(), 
-                        num_epochs = num_epochs,
-                        name='cifar_gcnn', net=net)            
+                        num_epochs = 10,
+                        name='cifar_gcnn', net=net)
+        d = {}
+        d['state_dict'] = init_net.state_dict()
+        torch.save(d, model_dir + 'cifar_gcnn_init_nn.pth')
     else:
         print("Error. Try deleting all the weight files to start a fresh training")
 

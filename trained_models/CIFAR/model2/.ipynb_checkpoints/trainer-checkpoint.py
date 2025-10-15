@@ -40,11 +40,11 @@ def get_loaders():
 
     trainset = torchvision.datasets.CIFAR10(root='/work/DLR/trained_models/CIFAR/data', train=True, download=True, transform=transform_train)
     trainset, valset = train_test_split(trainset, train_size=0.8)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=128, shuffle=True, num_workers=2)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=128, shuffle=True, num_workers=2, pin_memory=True)
     valloader = torch.utils.data.DataLoader(valset, batch_size=100,
-                                                shuffle=False, num_workers=1)
+                                                shuffle=False, num_workers=1, pin_memory=True)
     testset = torchvision.datasets.CIFAR10(root='/work/DLR/trained_models/CIFAR/data', train=False, download=True, transform=transform_test)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=100, shuffle=False, num_workers=2)
+    testloader = torch.utils.data.DataLoader(testset, batch_size=100, shuffle=False, num_workers=2, pin_memory=True)
 
     #classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
@@ -79,15 +79,15 @@ def train_net(force_train=False, num_epochs=10):
                         name='cifar_gcnn', net=net)
             
     elif not path_exists and not init_path_exists:
-        d = {}
-        d['state_dict'] = init_net.state_dict()
-        torch.save(d, model_dir + 'cifar_gcnn_init_nn.pth')
         t.train_network(trainloader, valloader, testloader,
                         num_classes=10, root_path= model_dir, 
                         optimizer=torch.optim.SGD(net.parameters(), lr=0.02, momentum=0.5),
                         lfn=  nn.CrossEntropyLoss(), 
                         num_epochs = num_epochs,
-                        name='cifar_gcnn', net=net)            
+                        name='cifar_gcnn', net=net)   
+        d = {}
+        d['state_dict'] = init_net.state_dict()
+        torch.save(d, model_dir + 'cifar_gcnn_init_nn.pth')
     else:
         print("Error. Try deleting all the weight files to start a fresh training")
 

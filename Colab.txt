@@ -9,3 +9,11 @@ python -m visdom.server -port 8097
 
 model = rfm.GeneralizedLaplaceRFM(bandwidth=1., exponent=1., agop_power=0.5, mem_gb=15, 
                                   centering=True, reg=1e-3, iters=5, p_batch_size=None, bandwidth_mode='constant')
+
+
+
+
+Installing pip inside docker
+
+curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+python3 get-pip.py

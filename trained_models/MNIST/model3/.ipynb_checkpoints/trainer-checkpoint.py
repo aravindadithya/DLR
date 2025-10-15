@@ -119,9 +119,9 @@ def get_loaders():
     print("Train Size: ", len(trainset), "Val Size: ", len(valset))
     
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=100,
-                                                  shuffle=True, num_workers=2)
+                                                  shuffle=True, num_workers=2, pin_memory=True)
     valloader = torch.utils.data.DataLoader(valset, batch_size=100,
-                                                shuffle=False, num_workers=1)
+                                                shuffle=False, num_workers=1, pin_memory=True)
     
     
     mnist_testset = torchvision.datasets.MNIST(root=path,
@@ -132,7 +132,7 @@ def get_loaders():
     print("Test Size: ", len(mnist_testset))
     testset = merge_data(mnist_testset, 900)
     testloader = torch.utils.data.DataLoader(testset, batch_size=128,
-                                                 shuffle=False, num_workers=2)
+                                                 shuffle=False, num_workers=2, pin_memory=True)
 
     return trainloader, valloader, testloader
 

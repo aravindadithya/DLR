@@ -24,12 +24,12 @@ def get_loaders():
     path= '/work/DLR/trained_models/MNIST/data' 
     trainset = torchvision.datasets.MNIST(root= path, train=True, download=True, transform=transform)
     trainset, valset = train_test_split(trainset, train_size=0.8)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=64, shuffle=False, num_workers=2)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=64, shuffle=False, num_workers=2, pin_memory=True)
     valloader = torch.utils.data.DataLoader(valset, batch_size=100,
-                                                shuffle=False, num_workers=1)
+                                                shuffle=False, num_workers=1, pin_memory=True)
     
     testset = torchvision.datasets.MNIST(root= path, train=False, download=True, transform=transform)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=64, shuffle=False, num_workers=2)
+    testloader = torch.utils.data.DataLoader(testset, batch_size=64, shuffle=False, num_workers=2, pin_memory=True)
 
     return trainloader, valloader, testloader
 
@@ -38,7 +38,7 @@ def get_untrained_net():
     net= model2.ConvNet()
     return net
 
-def train_net(force_train=False): 
+def train_net(force_train=False, fn=None, kwargs={}): 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     net = get_untrained_net()
     init_net = deepcopy(net)
@@ -49,17 +49,18 @@ def train_net(force_train=False):
     if path_exists:
         checkpoint = torch.load(model_dir+'mnist_conv_trained_nn.pth', weights_only=True)
         net.load_state_dict(checkpoint['state_dict'])  # Access the 'state_dict' within the loaded dictionary
+        checkpoint = torch.load(model_dir+'mnist_conv_trained_nn_0.pth', weights_only=True)
+        init_net.load_state_dict(checkpoint['state_dict'])
         print("Model weights loaded successfully.")   
         
-    if not path_exists or force_train:       
+    if not path_exists or force_train:  
         t.train_network(trainloader, valloader, testloader,
                     num_classes=10, root_path= model_dir, 
                     optimizer=torch.optim.SGD(net.parameters(), lr=.1),
                     lfn=  nn.CrossEntropyLoss(), 
-                    num_epochs = 2,
-                    name='mnist_conv', net=net)
-
-       
+                    num_epochs = 10,
+                    name='mnist_conv', net=net, init_net= init_net, save_init= not force_train, fn=fn, kwargs=kwargs)
+           
         
     return trainloader, valloader, testloader, init_net, net 
     

@@ -45,12 +45,12 @@ def get_loaders():
     path= '/work/DLR/trained_models/MNIST/data' 
     trainset = torchvision.datasets.MNIST(root= path, train=True, download=True, transform=transform)
     trainset, valset = train_test_split(trainset, train_size=0.8)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=64, shuffle=False, num_workers=2)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=64, shuffle=False, num_workers=2, pin_memory=True)
     valloader = torch.utils.data.DataLoader(valset, batch_size=100,
-                                                shuffle=False, num_workers=1)
+                                                shuffle=False, num_workers=1, pin_memory=True)
     
     testset = torchvision.datasets.MNIST(root= path, train=False, download=True, transform=transform)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=64, shuffle=False, num_workers=2)
+    testloader = torch.utils.data.DataLoader(testset, batch_size=64, shuffle=False, num_workers=2, pin_memory=True)
     return trainloader, valloader, testloader
 
 #GET NET
@@ -63,21 +63,36 @@ def train_net(force_train=False):
     net = get_untrained_net()
     init_net = deepcopy(net)
     trainloader, valloader, testloader = get_loaders()
-    model_dir= os.path.join('/work/DLR','trained_models', 'MNIST', 'model6', 'nn_models/')   
+    model_dir= os.path.join('/work/DLR','trained_models', 'MNIST', 'model6', 'nn_models/')
+    init_path_exists = os.path.exists(model_dir + 'cifar_gcnn_init_nn.pth')
     path_exists = os.path.exists(model_dir + 'mnist_conv_trained_nn.pth')
 
-    if path_exists:
+    if init_path_exists and path_exists:
+        checkpoint = torch.load(model_dir+'mnist_conv_trained_nn.pth', weights_only=True)
+        init_net.load_state_dict(checkpoint['state_dict']) 
         checkpoint = torch.load(model_dir+'mnist_conv_trained_nn.pth', weights_only=True)
         net.load_state_dict(checkpoint['state_dict'])  # Access the 'state_dict' within the loaded dictionary
-        print("Model weights loaded successfully.")    
+        print("Model weights loaded successfully.")   
+        if force_train:
+            t.train_network(trainloader, valloader, testloader,
+                        num_classes=10, root_path= model_dir, 
+                        optimizer=torch.optim.SGD(net.parameters(), lr=0.05, momentum=0.5),
+                        lfn=  nn.NLLLoss(), 
+                        num_epochs = 10,
+                        name='mnist_conv', net=net)          
 
-    if not path_exists or force_train:
-        t.train_network(trainloader, valloader, testloader,
+    elif not path_exists and not init_path_exists:
+            t.train_network(trainloader, valloader, testloader,
                         num_classes=10, root_path= model_dir, 
                         optimizer=torch.optim.SGD(net.parameters(), lr=0.05, momentum=0.5),
                         lfn=  nn.NLLLoss(), 
                         num_epochs = 10,
                         name='mnist_conv', net=net)
+            d = {}
+            d['state_dict'] = init_net.state_dict()
+            torch.save(d, model_dir + 'mnist_conv_init_nn.pth')
+    else:
+            print("Error. Try deleting all the weight files to start a fresh training")
     return trainloader, valloader, testloader, init_net, net
 
 def main():
