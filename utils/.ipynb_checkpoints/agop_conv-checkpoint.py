@@ -172,6 +172,7 @@ def get_grads(net, patchnet, trainloader,
         with torch.no_grad():
             imgs = imgs.cuda()        
             # Run the first half of the network wrt to the current layer 
+            imgs = imgs.float()
             imgs = net.features[:layer_idx](imgs).cpu() #(n,c,h,w)
         patches = patchify(imgs, (q, s), (s1,s2), padding=(pad1,pad2))#(n,h_out,w_out,c,q,s)
         patches = patches.cuda()
@@ -181,8 +182,8 @@ def get_grads(net, patchnet, trainloader,
         torch.cuda.empty_cache()
         if idx >= MAX_NUM_IMGS:
             break
-    net.cpu()
-    patchnet.cpu()
+    #net.cpu()
+    #patchnet.cpu()
     return M
 
 
@@ -204,7 +205,10 @@ def correlation(A, B):
 
 def verify_NFA(net, init_net, trainloader, layer_idx=0):
 
-
+    #patchnet.to(dtype=torch.float32, device='cuda') 
+    net.to(dtype=torch.float32, device='cuda')
+    init_net.to(dtype=torch.float32, device='cuda')
+    
     net, patchnet, M, M0, l_idx, conv_vals = load_nn(net,
                                                      init_net,
                                                      layer_idx=layer_idx)
@@ -215,14 +219,15 @@ def verify_NFA(net, init_net, trainloader, layer_idx=0):
                   padding=(pad1, pad2),
                   stride=(s1, s2),
                   layer_idx=l_idx)
-    print("Shpae after gradients: ", G.shape)
+    print("Shape after gradients: ", G.shape)
     G = sqrt(G)
     Gop = G.clone()
-    
+    corr = correlation(M,G)
     print("Correlation between Initial and Trained CNFM: ", correlation(M0, M))
     print("Correlation between Initial CNFM and Trained AGOP: ", correlation(M0, G))
-    print("Correlation between Trained CNFM and Trained AGOP: ", correlation(M, G))
-    return Gop 
+    print("Correlation between Trained CNFM and Trained AGOP: ", corr)
+    del patchnet
+    return Gop, corr
     #return i_val.data.numpy(), r_val.data.numpy()
 
 def vis_transform_image(net, img, G, layer_idx=0):

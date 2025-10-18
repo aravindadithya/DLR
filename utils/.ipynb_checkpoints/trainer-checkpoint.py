@@ -12,7 +12,7 @@ import torch.nn as nn
 import os
 from torch.amp import autocast, GradScaler
 scaler = torch.amp.GradScaler('cuda')
-fn_data = []
+fn_data = {}
 
 def visualize_M(M, idx):
     d, _ = M.shape
@@ -36,12 +36,6 @@ def train_network(train_loader, val_loader, test_loader, net, init_net, optimize
                   save_frames=False, save_init= False, fn=None, kwargs={}):
 
 
-    #for idx, batch in enumerate(train_loader):
-        #inputs, labels = batch
-        #_, dim = inputs.shape
-        #break
-    #net = neural_model.Net(dim, num_classes=num_classes)
-
     params = 0
     for idx, param in enumerate(list(net.parameters())):
         size = 1
@@ -51,6 +45,7 @@ def train_network(train_loader, val_loader, test_loader, net, init_net, optimize
     print("NUMBER OF PARAMS: ", params)
 
     net.cuda()
+    #net.to(dtype=torch.float32, device='cuda')
     best_val_acc = 0
     best_test_acc = 0
     #best_val_loss = np.float("inf")
@@ -78,8 +73,12 @@ def train_network(train_loader, val_loader, test_loader, net, init_net, optimize
             torch.save(d, file_path)
             #net.cuda()
         if fn is not None:
+            #net.to(dtype=torch.float32, device='cuda')
+            #init_net.to(dtype=torch.float32, device='cuda')
             kwargs = {'net': net, 'train_loader': train_loader, 'init_net': init_net, **kwargs}
-            fn_data.append(fn(epoch=i, kwargs=kwargs))
+            fn_data[i]= fn(epoch=i, kwargs=kwargs)
+            net.to(dtype=torch.float32, device='cuda')
+            init_net.to(dtype=torch.float32, device='cpu')
 
         train_loss = train_step(net, optimizer, lfn, train_loader, save_frames=save_frames)
         val_loss = val_step(net, val_loader, lfn)

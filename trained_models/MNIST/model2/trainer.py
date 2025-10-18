@@ -47,10 +47,10 @@ def train_net(force_train=False, fn=None, kwargs={}):
     path_exists = os.path.exists(model_dir + 'mnist_conv_trained_nn.pth')
     
     if path_exists:
-        checkpoint = torch.load(model_dir+'mnist_conv_trained_nn.pth', weights_only=True)
-        net.load_state_dict(checkpoint['state_dict'])  # Access the 'state_dict' within the loaded dictionary
         checkpoint = torch.load(model_dir+'mnist_conv_trained_nn_0.pth', weights_only=True)
-        init_net.load_state_dict(checkpoint['state_dict'])
+        init_net.load_state_dict(checkpoint['state_dict'])  # Access the 'state_dict' within the loaded dictionary
+        checkpoint = torch.load(model_dir+'mnist_conv_trained_nn.pth', weights_only=True)
+        net.load_state_dict(checkpoint['state_dict'])
         print("Model weights loaded successfully.")   
         
     if not path_exists or force_train:  

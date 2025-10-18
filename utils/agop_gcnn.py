@@ -271,7 +271,8 @@ def get_grads(net, in_channels, input_stabilizer_size, patchnet, trainloader,
             imgs, _ = batch
             #imgs= imgs.double()
             with torch.no_grad():
-                imgs = imgs.cuda()        
+                imgs = imgs.cuda()     
+                imgs = imgs.float()
                 # Run the first half of the network wrt to the current layer 
                 imgs = net.features[:layer_idx](imgs).cpu() #(bs,c,h,w)
             patches = patchify(imgs, in_channels, input_stabilizer_size, 
@@ -309,8 +310,8 @@ def get_grads(net, in_channels, input_stabilizer_size, patchnet, trainloader,
             del J
         torch.cuda.empty_cache()
         
-    net.cpu()
-    patchnet.cpu()
+    #net.cpu()
+    #patchnet.cpu()
     return M*1/n
 
 
@@ -334,6 +335,7 @@ def verify_NFA(net, init_net, trainloader, layer_idx=0, max_batches=2, classes=1
 
     #net = net.double()
     #init_net = init_net.double()
+    
     net, patchnet, M, M0, l_idx, conv_vals, in_channels, input_stabilizer_size = load_nn(net,
                                                      init_net,
                                                      layer_idx=layer_idx)
@@ -355,6 +357,7 @@ def verify_NFA(net, init_net, trainloader, layer_idx=0, max_batches=2, classes=1
     print("Correlation between Initial CNFM and Trained AGOP: ", correlation(M0, G))
     print("Correlation between Trained CNFM and Trained AGOP: ", correlation(M, G))
 
+    del patchnet
     #print("Final: ", i_val, r_val)
     return (Gop, correlation(M, G))
     #return i_val.data.numpy(), r_val.data.numpy()
