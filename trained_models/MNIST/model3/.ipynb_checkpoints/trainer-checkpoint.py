@@ -141,7 +141,7 @@ def get_untrained_net():
     net = model3.Net(3072, num_classes=10)
     return net
 
-def train_net(force_train=False): 
+def train_net(force_train=False, fn=None, kwargs={}): 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     net = get_untrained_net()
     init_net = deepcopy(net)
@@ -149,6 +149,8 @@ def train_net(force_train=False):
     model_dir = os.path.join('/work/DLR','trained_models', 'MNIST', 'model3', 'nn_models/')
     path_exists = os.path.exists(model_dir +'mnist_fc_trained_nn.pth')
     if path_exists:
+        checkpoint = torch.load(model_dir+'mnist_fc_trained_nn_0.pth', weights_only=True)
+        init_net.load_state_dict(checkpoint['state_dict'])  # Access the 'state_dict' within the loaded dictionary
         checkpoint = torch.load(model_dir+'mnist_fc_trained_nn.pth', weights_only=True)
         net.load_state_dict(checkpoint['state_dict'])  # Access the 'state_dict' within the loaded dictionary
         print("Model weights loaded successfully.")
@@ -159,7 +161,7 @@ def train_net(force_train=False):
                             optimizer=torch.optim.SGD(net.parameters(), lr=.1),
                             lfn=  nn.MSELoss(), 
                             num_epochs = 2,
-                            name='mnist_fc', net=net)  
+                            name='mnist_fc', net=net, init_net= init_net, save_init= not force_train, fn=fn, kwargs=kwarg)  
         
     return trainloader, valloader, testloader, init_net, net
 

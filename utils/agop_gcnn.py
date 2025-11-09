@@ -21,6 +21,7 @@ from torch.linalg import norm
 from torchvision import models
 import torch.nn.functional as F
 from utils.groupy.gconv.pytorch_gconv.splitgconv2d import P4ConvZ2, P4ConvP4, P4MConvZ2, P4MConvP4M
+#Todo: Import these blocks directly by avoiding model2
 from trained_models.CIFAR.model2.model2 import BasicBlock, Bottleneck
 from groupy.gconv.make_gconv_indices import *
 from copy import deepcopy

@@ -47,7 +47,7 @@ def get_untrained_net():
     net= model5.ConvNet()
     return net
 
-def train_net(force_train=False): 
+def train_net(force_train=False, fn=None, kwargs={}): 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     net = get_untrained_net()
     init_net = deepcopy(net)
@@ -56,6 +56,8 @@ def train_net(force_train=False):
     path_exists = os.path.exists(model_dir + 'mnist_conv_trained_nn.pth')
 
     if path_exists:
+        checkpoint = torch.load(model_dir+'mnist_conv_trained_nn_0.pth', weights_only=True)
+        init_net.load_state_dict(checkpoint['state_dict']) 
         checkpoint = torch.load(model_dir+'mnist_conv_trained_nn.pth', weights_only=True)
         net.load_state_dict(checkpoint['state_dict'])  # Access the 'state_dict' within the loaded dictionary
         print("Model weights loaded successfully.")    
@@ -66,7 +68,7 @@ def train_net(force_train=False):
                         optimizer=torch.optim.SGD(net.parameters(), lr=0.02, momentum=0.5),
                         lfn=  nn.NLLLoss(), 
                         num_epochs = 10,
-                        name='mnist_conv', net=net)
+                        name='mnist_conv', net=net, init_net= init_net, save_init= not force_train, fn=fn, kwargs=kwargs)
     return trainloader, valloader, testloader, init_net, net
 
 def main():

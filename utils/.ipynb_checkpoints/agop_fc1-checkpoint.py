@@ -65,7 +65,7 @@ def egop(net, dataset, batch_size=800, cutoff=10, centering=False):
     device = torch.device('cuda')
     bs = 800
     batches = torch.split(dataset, bs)
-    net = net.cuda()
+    net.cuda()
     G = 0
 
     Js = []
@@ -125,21 +125,24 @@ def load_nn(net, init_net, layer_idx=0):
     M0 =torch.matmul(M0.T, M0)
     return net, subnet_l, subnet_r, M, M0, l_idx
 
-def get_layer_output(net, trainloader, layer_idx=0):
+def get_layer_output(net, trainloader):
     print(net)
-    net.cpu()
+    net.cuda()
     net.eval()
     out = []
     for idx, batch in enumerate(trainloader):
         data, labels = batch
-        data.cpu()
-        if layer_idx == 0:
+        data = data.cuda()
+        '''
+        if l_idx == 0:
             out.append(data)
-        else:
-            out.append(net(data))
+        
+        else:'''
+        out.append(net(data))
         '''
         elif layer_idx == 1:
-            o = neural_model.Nonlinearity()(net.first(data))
+            o = neural_model.Nonlinearity()(net.first(data)) #TODO: Check why this non-linearity is there. 
+                                                              Ideally the computation has to be on the first layer without non linearity.
             out.append(o.cpu())
         elif layer_idx > 1:
             o = net.first(data)
@@ -161,7 +164,7 @@ def verify_NFA(net, init_net, trainloader, layer_idx=0, batch_size=800, cutoff=1
     print(M.shape)
 
     
-    out = get_layer_output(subnet_l.features, trainloader, layer_idx=layer_idx)
+    out = get_layer_output(subnet_l.features, trainloader)
     G = egop(subnet_r, out, batch_size, cutoff, centering=True)
     G2 = egop(subnet_r, out, batch_size, cutoff, centering=False)
     G = sqrt(G.cuda())
@@ -171,10 +174,11 @@ def verify_NFA(net, init_net, trainloader, layer_idx=0, batch_size=800, cutoff=1
     #Gop = G.clone()
     centered_correlation = correlation(M.to(device), G.to(device))
     uncentered_correlation = correlation(M.to(device), G2.to(device))
-    print("Full Matrix Correlation Centered: " , centered_correlation)
-    print("Full Matrix Correlation Uncentered: " , uncentered_correlation)
     i_val = correlation(M0.cuda(), M.cuda())
     print("Correlation between Initial and Trained CNFM: ", i_val)
+    print("Full Matrix Correlation Centered: " , centered_correlation)
+    print("Full Matrix Correlation Uncentered: " , uncentered_correlation)
+    
     #return Gop
 
 

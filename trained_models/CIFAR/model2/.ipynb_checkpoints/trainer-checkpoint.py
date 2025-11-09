@@ -55,41 +55,28 @@ def get_untrained_net():
     net= model2.ResNet34()
     return net
 
-def train_net(force_train=False, num_epochs=10): 
+def train_net(force_train=False,  fn=None, kwargs={}): 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     net = get_untrained_net()
     init_net = deepcopy(net)
     trainloader, valloader, testloader = get_loaders()
     model_dir= os.path.join('/work/DLR','trained_models', 'CIFAR', 'model2', 'nn_models/')   
-    init_path_exists = os.path.exists(model_dir + 'cifar_gcnn_init_nn.pth')
     path_exists = os.path.exists(model_dir + 'cifar_gcnn_trained_nn.pth')
     
-    if init_path_exists and path_exists:
-        checkpoint = torch.load(model_dir+'cifar_gcnn_trained_nn.pth', weights_only=True)
+    if not path_exists:
+        checkpoint = torch.load(model_dir+'cifar_gcnn_trained_nn_0.pth', weights_only=True)
         init_net.load_state_dict(checkpoint['state_dict'])     
         checkpoint = torch.load(model_dir+'cifar_gcnn_trained_nn.pth', weights_only=True)
         net.load_state_dict(checkpoint['state_dict'])  # Access the 'state_dict' within the loaded dictionary
         print("Model weights loaded successfully.")  
-        if force_train:
-            t.train_network(trainloader, valloader, testloader,
-                        num_classes=10, root_path= model_dir, 
-                        optimizer=torch.optim.SGD(net.parameters(), lr=0.02, momentum=0.5),
-                        lfn=  nn.CrossEntropyLoss(), 
-                        num_epochs = num_epochs,
-                        name='cifar_gcnn', net=net)
-            
-    elif not path_exists and not init_path_exists:
+        
+    if path_exists or force_train:
         t.train_network(trainloader, valloader, testloader,
                         num_classes=10, root_path= model_dir, 
                         optimizer=torch.optim.SGD(net.parameters(), lr=0.02, momentum=0.5),
                         lfn=  nn.CrossEntropyLoss(), 
                         num_epochs = num_epochs,
-                        name='cifar_gcnn', net=net)   
-        d = {}
-        d['state_dict'] = init_net.state_dict()
-        torch.save(d, model_dir + 'cifar_gcnn_init_nn.pth')
-    else:
-        print("Error. Try deleting all the weight files to start a fresh training")
+                        name='cifar_gcnn', net=net, init_net= init_net, save_init= not force_train, fn=fn, kwargs=kwargs)   
 
     return trainloader, valloader, testloader, init_net, net
 
