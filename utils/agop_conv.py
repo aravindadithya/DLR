@@ -68,7 +68,7 @@ class PatchConvLayer(nn.Module):
         #      2. Why does this output n,k,w,h when the standard format is n,k,h,w
         out = torch.einsum('nwhcqr, kcqr -> nwhk', patches, self.layer.weight)
         n, w, h, k = out.shape
-        out = out.transpose(1, 3).transpose(2, 3) #Should be (n,k,h_out,w_out) even though w and h are swapped
+        out = out.transpose(1, 3).transpose(2, 3) #Should be (n,k,h_out,w_out) even though the names w and h are swapped
         return out
 
 def get_jacobian(net, data, c_idx=0, chunk=100):
@@ -172,6 +172,7 @@ def get_grads(net, patchnet, trainloader,
         with torch.no_grad():
             imgs = imgs.cuda()        
             # Run the first half of the network wrt to the current layer 
+            imgs = imgs.float()
             imgs = net.features[:layer_idx](imgs).cpu() #(n,c,h,w)
         patches = patchify(imgs, (q, s), (s1,s2), padding=(pad1,pad2))#(n,h_out,w_out,c,q,s)
         patches = patches.cuda()
@@ -181,8 +182,8 @@ def get_grads(net, patchnet, trainloader,
         torch.cuda.empty_cache()
         if idx >= MAX_NUM_IMGS:
             break
-    net.cpu()
-    patchnet.cpu()
+    #net.cpu()
+    #patchnet.cpu()
     return M
 
 
@@ -190,7 +191,9 @@ def min_max(M):
     return (M - M.min()) / (M.max() - M.min())
 
 
-def correlation(M1, M2):
+def correlation(A, B):
+    M1 = A.clone()
+    M2 = B.clone()
     M1 -= M1.mean()
     M2 -= M2.mean()
 
@@ -202,27 +205,31 @@ def correlation(M1, M2):
 
 def verify_NFA(net, init_net, trainloader, layer_idx=0):
 
-
+    #patchnet.to(dtype=torch.float32, device='cuda') 
+    net.to(dtype=torch.float32, device='cuda')
+    init_net.to(dtype=torch.float32, device='cuda')
+    
     net, patchnet, M, M0, l_idx, conv_vals = load_nn(net,
                                                      init_net,
                                                      layer_idx=layer_idx)
-    (q, s), (pad1, pad2), (s1, s2) = conv_vals
-
-    i_val = correlation(M0, M)
-    print("Correlation between Initial and Trained CNFM: ", i_val)
+    (q, s), (pad1, pad2), (s1, s2) = conv_vals    
 
     G = get_grads(net, patchnet, trainloader,
                   kernel=(q, s),
                   padding=(pad1, pad2),
                   stride=(s1, s2),
                   layer_idx=l_idx)
-    print("Shpae after gradients: ", G.shape)
+    print("Shape after gradients: ", G.shape)
     G = sqrt(G)
     Gop = G.clone()
-    r_val = correlation(M, G)
-    print("Correlation between Trained CNFM and AGOP: ", r_val)
-    print("Final: ", i_val, r_val)
-    return Gop 
+    corr = correlation(M,G)
+    print("Correlation between Initial and Trained CNFM: ", correlation(M0, M))
+    print("Correlation between Initial CNFM and Trained AGOP: ", correlation(M0, G))
+    print("Correlation between Trained CNFM and Trained AGOP: ", corr)
+    
+    init_net.to(dtype=torch.float32, device='cuda')
+    del patchnet
+    return Gop, corr
     #return i_val.data.numpy(), r_val.data.numpy()
 
 def vis_transform_image(net, img, G, layer_idx=0):

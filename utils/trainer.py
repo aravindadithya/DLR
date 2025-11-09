@@ -1,7 +1,6 @@
 # Functions here are taken from 
 #https://github.com/aradha/recursive_feature_machines
 import torch
-from torch.autograd import Variable
 import torch.optim as optim
 import time
 #import model1
@@ -11,6 +10,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch.nn as nn
 import os
+from torch.amp import autocast, GradScaler
+scaler = torch.amp.GradScaler('cuda')
+fn_data = {}
 
 def visualize_M(M, idx):
     d, _ = M.shape
@@ -29,16 +31,10 @@ def visualize_M(M, idx):
     return F
 
 
-def train_network(train_loader, val_loader, test_loader, net, optimizer, lfn, root_path,
+def train_network(train_loader, val_loader, test_loader, net, init_net, optimizer, lfn, root_path,
                   num_classes=2, name=None, num_epochs = 5, 
-                  save_frames=False):
+                  save_frames=False, save_init= False, fn=None, kwargs={}):
 
-
-    #for idx, batch in enumerate(train_loader):
-        #inputs, labels = batch
-        #_, dim = inputs.shape
-        #break
-    #net = neural_model.Net(dim, num_classes=num_classes)
 
     params = 0
     for idx, param in enumerate(list(net.parameters())):
@@ -49,24 +45,25 @@ def train_network(train_loader, val_loader, test_loader, net, optimizer, lfn, ro
     print("NUMBER OF PARAMS: ", params)
 
     net.cuda()
+    #net.to(dtype=torch.float32, device='cuda')
     best_val_acc = 0
     best_test_acc = 0
     #best_val_loss = np.float("inf")
     best_val_loss = float("inf")
     best_test_loss = 0
-    os.makedirs(root_path, exist_ok=True)     
+    os.makedirs(root_path, exist_ok=True)
     for i in range(num_epochs):
         if save_frames:
-            net.cpu()
+            #net.cpu()
             for idx, p in enumerate(net.parameters()):
                 if idx == 0:
                     M = p.data.numpy()
             M = M.T @ M
             visualize_M(M, i)
-            net.cuda()
-
-        if i == 0 or i == 1:
-            net.cpu()
+            #net.cuda()
+                
+        if save_init and (i == 0 or i == 1):
+            #net.cpu()
             d = {}
             d['state_dict'] = net.state_dict()    
             if name is not None:
@@ -74,7 +71,14 @@ def train_network(train_loader, val_loader, test_loader, net, optimizer, lfn, ro
             else:
                 file_path = os.path.join(root_path, f'trained_nn_{i}.pth')
             torch.save(d, file_path)
-            net.cuda()
+            #net.cuda()
+        if fn is not None:
+            #net.to(dtype=torch.float32, device='cuda')
+            #init_net.to(dtype=torch.float32, device='cuda')
+            kwargs = {'net': net, 'train_loader': train_loader, 'init_net': init_net, **kwargs}
+            fn_data[i]= fn(epoch=i, kwargs=kwargs)
+            net.to(dtype=torch.float32, device='cuda')
+            init_net.to(dtype=torch.float32, device='cpu')
 
         train_loss = train_step(net, optimizer, lfn, train_loader, save_frames=save_frames)
         val_loss = val_step(net, val_loader, lfn)
@@ -93,7 +97,7 @@ def train_network(train_loader, val_loader, test_loader, net, optimizer, lfn, ro
         if val_acc >= best_val_acc:
             best_val_acc = val_acc
             best_test_acc = test_acc
-            net.cpu()
+            #net.cpu()
             d = {}
             d['state_dict'] = net.state_dict()
             if name is not None:
@@ -101,7 +105,7 @@ def train_network(train_loader, val_loader, test_loader, net, optimizer, lfn, ro
             else:
                 file_path = os.path.join(root_path, f'trained_nn.pth')
             torch.save(d, file_path)
-            net.cuda()
+            #net.cuda()
 
         if val_loss <= best_val_loss:
             best_val_loss = val_loss
@@ -112,7 +116,9 @@ def train_network(train_loader, val_loader, test_loader, net, optimizer, lfn, ro
               "Train Acc: ", train_acc, "Test Acc: ", test_acc,
               "Best Val Acc: ", best_val_acc, "Best Val Loss: ", best_val_loss,
               "Best Test Acc: ", best_test_acc, "Best Test Loss: ", best_test_loss)
-
+    
+    if fn and fn_data:
+        torch.save(fn_data, kwargs['save_path'])
 
 def get_data(loader):
     X = []
@@ -125,6 +131,7 @@ def get_data(loader):
 
 
 def train_step(net, optimizer, lfn, train_loader, save_frames=False):
+    global scaler
     net.train()
     start = time.time()
     train_loss = 0.
@@ -133,13 +140,21 @@ def train_step(net, optimizer, lfn, train_loader, save_frames=False):
         optimizer.zero_grad()
         inputs, labels = batch
         targets = labels
-        output = net(Variable(inputs).cuda())
-        target = Variable(targets).cuda()
-        #loss = torch.mean(torch.pow(output - target, 2))
-        loss= lfn(output,target)
-        loss.backward()
-        optimizer.step()
-        train_loss += loss.cpu().data.numpy() * len(inputs)
+        
+        inputs = inputs.cuda(non_blocking=True)
+        target = targets.cuda(non_blocking=True)
+
+        with autocast(device_type='cuda'):
+            output = net(inputs)
+            loss = lfn(output, target)
+        
+        scaler.scale(loss).backward()  # Scales the loss before backward()
+        scaler.step(optimizer)         # Updates the optimizer
+        scaler.update()                # Updates the scale for next iteration
+
+        # Already fixed loss accumulation:
+        train_loss += loss.detach().item() * len(inputs)
+        
     end = time.time()
     print("Time: ", end - start)
     train_loss = train_loss / len(train_loader.dataset)
@@ -147,18 +162,23 @@ def train_step(net, optimizer, lfn, train_loader, save_frames=False):
 
 
 def val_step(net, val_loader, lfn):
+    global scaler
     net.eval()
     val_loss = 0.
 
     for batch_idx, batch in enumerate(val_loader):
         inputs, labels = batch
         targets = labels
+        inputs = inputs.cuda(non_blocking=True) # Move inside loop
+        target = targets.cuda(non_blocking=True) # Move inside loop
+        
         with torch.no_grad():
-            output = net(Variable(inputs).cuda())
-            target = Variable(targets).cuda()
-        #loss = torch.mean(torch.pow(output - target, 2))
-        loss= lfn(output,target)
-        val_loss += loss.cpu().data.numpy() * len(inputs)
+            with autocast(device_type='cuda'): 
+                output = net(inputs)
+                loss = lfn(output, target)
+                
+            val_loss += loss.detach().item() * len(inputs)
+        
     val_loss = val_loss / len(val_loader.dataset)
     return val_loss
 
@@ -170,9 +190,8 @@ def get_acc_mse(net, loader):
     for batch_idx, batch in enumerate(loader):
         inputs, targets = batch
         with torch.no_grad():
-            #Variable is depreceated, use tensor
-            output = net(Variable(inputs).cuda())
-            target = Variable(targets).cuda()
+            output = inputs.cuda(non_blocking=True)
+            target = targets.cuda(non_blocking=True)
 
         preds = torch.argmax(output, dim=-1)
         labels = torch.argmax(target, dim=-1)
@@ -181,13 +200,15 @@ def get_acc_mse(net, loader):
     return count / len(loader.dataset) * 100
 
 def get_acc_ce(net, loader):
+    global scaler
     net.eval()
     correct = 0
     total = 0
     with torch.no_grad():
         for inputs, targets in loader:
-            inputs, targets = inputs.cuda(), targets.cuda()  # Move to CUDA consistently
-            outputs = net(inputs)
+            inputs, targets = inputs.cuda(non_blocking=True), targets.cuda(non_blocking=True)  # Move to CUDA consistently
+            with autocast(device_type='cuda'):
+               outputs = net(inputs)
             _, predicted = torch.max(outputs.data, 1)  # Get predicted classes
             total += targets.size(0)
             # Targets maybe in one-hot format. Hence Max

@@ -1,0 +1,1 @@
+Epoch:  40 Train Loss:  0.0002762759 Test Loss:  0.65447605 Train Acc:  100.0 Test Acc:  86.04 Best Val Acc:  87.35 Best Val Loss:  0.483544 Best Test Acc:  85.92 Best Test Loss:  0.62655073

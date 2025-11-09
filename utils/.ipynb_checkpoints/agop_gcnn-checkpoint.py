@@ -9,28 +9,22 @@ import torch
 import torch.nn as nn
 import random
 import numpy as np
-#from functorch import jacrev, vmap
 from torch.func import jacrev
 from torch.nn.functional import pad
-#import dataset
-#from numpy.linalg import eig
-from copy import deepcopy
 from torch.linalg import norm, svd
 from torchvision import models
 import visdom
 from torch.linalg import norm, eig
-#import torchvision
-#import torchvision.transforms as transforms
 import random
 import torch.backends.cudnn as cudnn
 from torch.linalg import norm
 from torchvision import models
 import torch.nn.functional as F
 from utils.groupy.gconv.pytorch_gconv.splitgconv2d import P4ConvZ2, P4ConvP4, P4MConvZ2, P4MConvP4M
+#Todo: Import these blocks directly by avoiding model2
+from trained_models.CIFAR.model2.model2 import BasicBlock, Bottleneck
 from groupy.gconv.make_gconv_indices import *
 from copy import deepcopy
-from torch.nn.functional import pad
-from torch.func import jacrev
 
 SEED = 2323
 
@@ -44,7 +38,7 @@ vis.close(env='main')
 
 def patchify(x, in_channels, ip_stab, patch_size, stride_size, padding=None, pad_type='zeros'):
     '''
-        Given an input image (n,c,h,w) generate (n,w_out,h_out,c,q,s) respecting stride,padding, 
+        Given an input image (bs,c,h,w) generate (bs,w_out,h_out,c,q,s) respecting stride,padding, 
         w_out is number of pathces along the width for the given stride after padding
         h_out is number of pathces along the height for the given stride after padding
         (q,s) is the kernel dimensions 
@@ -69,9 +63,9 @@ def patchify(x, in_channels, ip_stab, patch_size, stride_size, padding=None, pad
     elif pad_type == 'circular':
         x = pad(x, pad_dims, 'circular')
         
-    patches = x.unfold(2, q1, s1).unfold(3, q2, s2) #(n, c, h_out, w_out, q, s)
+    patches = x.unfold(2, q1, s1).unfold(3, q2, s2) #(bs, c, h_out, w_out, q, s)
     #print("Image Shape1",patches.shape)
-    patches = patches.transpose(1, 3).transpose(1, 2) #(n,w_out,h_out,c,q,s) 
+    patches = patches.transpose(1, 3).transpose(1, 2) #(bs,w_out,h_out,c,q,s) 
     #print("Image Shape2",patches.shape)
     return patches
 
@@ -90,6 +84,8 @@ class PatchConvLayer(nn.Module):
         #inds = make_c4_z2_indices(self.layer.ksize)
        
     def forward(self, patches):
+        if(len(patches.shape)==7):
+            patches= patches[:,0,:,:,:,:,:]
         tw = trans_filter(self.layer.weight, self.layer.inds)
         tw_shape = (self.layer.out_channels * self.layer.output_stabilizer_size,
                     self.layer.in_channels * self.layer.input_stabilizer_size,
@@ -104,28 +100,53 @@ class PatchConvLayer(nn.Module):
         #print("out_shape", out.shape)
         return out
 
+
+class PatchBasicBlock(nn.Module):
+
+    def __init__(self, block_layer):
+        super().__init__()
+        self.layer = block_layer
+
+    def forward(self, X):          
+        #print(X.shape)
+        x1 = X[:,0,:,:,:,:,:] #(1,w_out, h_out, c, q, s)
+        x2 = X[:,1,:,:,:,:,:] #(1,w_out, h_out, c, q, s)
+        o = self.layer.features(x1)
+        if(self.layer.shortcut):
+            z = self.layer.shortcut(x2)
+            o+=z
+        o = self.layer.lrelu(o)
+        return o
+        
+    
+
 def get_jacobian(net, data, c_idx=0, chunk=100):
     with torch.no_grad():
-        def single_net(x):
-            # x is (w_out,h_out,c,q,s)
-            return net(x.unsqueeze(0))[:,c_idx*chunk:(c_idx+1)*chunk].squeeze(0)
+        def single_net(X):
+            # x is (2, w_out,h_out,c,q,s)
+            return net(X.unsqueeze(0))[:,c_idx*chunk:(c_idx+1)*chunk].squeeze(0)
         # Parallelize across the images.
-        return torch.vmap(jacrev(single_net))(data) #(n, chunk, w_out, h_out, c, q, s)
+        #data: (bs, 2, w_out, h_out, c, q, s)
+        return torch.vmap(jacrev(single_net))(data) #(bs, chunk, 2, w_out, h_out, c, q, s)
 
-def egop(model, z):
+def egop(model, z, classes=10, chunk_idxs=10):
     ajop = 0
-    c = 10
-    chunk_idxs = 1
-    #Chunking is done to compute jacobian as chunks. This saves memory
-    #TODO: chunk should be passed as argument
+    c = classes
+    #Chunking is done to compute jacobian as sum of smaller size matrices using outer product. This saves memory
     chunk = c // chunk_idxs
+    chunk_list = []
     for i in range(chunk_idxs):
-        J = get_jacobian(model, z, c_idx=i, chunk=chunk)
+        J = get_jacobian(model, z, c_idx=i, chunk=chunk) #(n, chunk, 2, w_out, h_out, c, q, s)
+        J= J[:,:,0,:,:,:,:,:]
         n, c, w, h, _, _, _ = J.shape
         J = J.transpose(1, 3).transpose(1, 2) #(n, w_out, h_out, chunk, c, q, s)
         grads = J.reshape(n*w*h, c, -1) #(n*w_out*h_out, chunk, c*q*s)
-        #Clarify: Where is mean taken
-        ajop += torch.einsum('ncd, ncD -> dD', grads, grads) #(c*q*s,c*q*s)
+        chunk_list.append(grads)
+        #Clarify: Where is mean taken      
+        #ajop += torch.einsum('ncd, ncD -> dD', grads, grads) #(c*q*s,c*q*s)
+        #del J, grads
+        #torch.cuda.empty_cache()
+    return torch.cat(chunk_list, dim=1)
     return ajop
 
 
@@ -134,20 +155,55 @@ def load_nn(net, init_net, layer_idx=0):
     count = 0
     # Get the layer_idx+1 th conv layer
     for idx, m in enumerate(net.features):
-        if isinstance(m, (P4ConvZ2, P4ConvP4, P4MConvZ2, P4MConvP4M)):
+        if isinstance(m, (P4ConvZ2, P4ConvP4, P4MConvZ2, P4MConvP4M, BasicBlock, Bottleneck)):
             count += 1
         if count-1 == layer_idx:
             l_idx = idx
             break
 
     print("l_idx",l_idx)
-    layer = deepcopy(net.features[l_idx])
-    layer_init = deepcopy(init_net.features[l_idx])
-
+    if(isinstance(net.features[l_idx],(P4ConvZ2, P4ConvP4, P4MConvZ2, P4MConvP4M))):
+        
+        # Construct patchnet
+        patchnet = deepcopy(net)
+        temp = deepcopy(net.features[l_idx])
+        conv_layer = PatchConvLayer(temp)
+        
+        #Truncate all layers before l_idx    
+        patchnet.features = net.features[l_idx:]
+        patchnet.features[0] = conv_layer
+        
+        #layer whose CNFM we need
+        layer = deepcopy(net.features[l_idx])
+        layer_init = deepcopy(init_net.features[l_idx])     
+        
+    else:   
+        
+        # Construct patchnet
+        patchnet = deepcopy(net)
+        temp_block = deepcopy(net.features[l_idx])
+        conv_layer = PatchConvLayer(temp_block.features[0])
+        temp_block.features[0]= conv_layer
+        if(len(temp_block.shortcut)>0):
+           short_layer = PatchConvLayer(temp_block.shortcut[0])
+           temp_block.shortcut[0] = short_layer
+        else:
+           temp_block.shortcut= None
+            
+        temp_block = PatchBasicBlock(temp_block)
+        
+        #Truncate all layers before l_idx    
+        patchnet.features = net.features[l_idx:]
+        patchnet.features[0] = temp_block
+        
+        #layer whose CNFM we need
+        layer = deepcopy(net.features[l_idx].features[0])
+        layer_init = deepcopy(init_net.features[l_idx].features[0])        
+    
     # Extract all the meta info of the current conv layer.
-    (q, s) = net.features[l_idx].kernel_size
-    (pad1, pad2) = net.features[l_idx].padding
-    (s1, s2) = net.features[l_idx].stride 
+    (q, s) = layer.kernel_size
+    (pad1, pad2) = layer.padding
+    (s1, s2) = layer.stride 
     in_channels = layer.in_channels
     input_stabilizer_size = layer.input_stabilizer_size
     
@@ -180,54 +236,84 @@ def load_nn(net, init_net, layer_idx=0):
     # Compute WtW which is (c*q*s,c*q*s) matrix
     M0 = torch.einsum('nd, nD -> dD', M0, M0)
 
-    # Construct patchnet
-    patchnet = deepcopy(net)
-    temp = deepcopy(net.features[l_idx])
-    layer = PatchConvLayer(temp)
-    
-    # Truncate all layers before l_idx    
-    patchnet.features = net.features[l_idx:]
-    patchnet.features[0] = layer
-
     return net, patchnet, M, M0, l_idx, [(q, s), (pad1,pad2), (s1,s2)], in_channels, input_stabilizer_size
 
 
 def get_grads(net, in_channels, input_stabilizer_size, patchnet, trainloader,
               kernel=(3,3), padding=(1,1),
-              stride=(1,1), layer_idx=0):
+              stride=(1,1), layer_idx=0, max_batches=2, classes=10, chunk_size=10, centering=True):
     net.eval()
     net.cuda()
     patchnet.eval()
     patchnet.cuda()
-    M = 0
     q, s = kernel
     pad1, pad2 = padding
     s1, s2 = stride
 
-    # Num images for taking AGOP (Can be small for early layers)
-    MAX_NUM_IMGS = 10
+    M = 0
+    ajop = 0
+    J_sum=0
+    n=0
+    
+    c = classes
+    #Chunking is done to compute jacobian as sum of smaller size matrices using outer product. This saves memory
+    chunk = c // chunk_size
+    chunk_list = []
+   # bs = len(list(trainloader)[0]) 
+    bs=128
 
-    for idx, batch in enumerate(trainloader):
-        print("Computing GOP for sample " + str(idx) + \
-              " out of " + str(MAX_NUM_IMGS))
-        imgs, _ = batch
-        imgs= imgs.double()
-        with torch.no_grad():
-            imgs = imgs.cuda()        
-            # Run the first half of the network wrt to the current layer 
-            imgs = net.features[:layer_idx](imgs).cpu() #(n,c,h,w)
-        patches = patchify(imgs, in_channels, input_stabilizer_size, 
-                           (q, s), (s1,s2), padding=(pad1,pad2))#(n,w_out,h_out,c,q,s)
-        patches = patches.cuda()
-        #print(patches.shape)
-        M += egop(patchnet, patches).cpu()
-        del imgs, patches
+    for i in range(chunk_size):
+        grads = []
+        J_sum=0
+        print("************* Chunk"+str(i)+"*************")
+        for idx, batch in enumerate(trainloader):
+            #print("Computing GOP for sample " + str(idx) + \
+                  #" out of " + str(max_batches))
+            imgs, _ = batch
+            #imgs= imgs.double()
+            with torch.no_grad():
+                imgs = imgs.cuda()     
+                imgs = imgs.float()
+                # Run the first half of the network wrt to the current layer 
+                imgs = net.features[:layer_idx](imgs).cpu() #(bs,c,h,w)
+            patches = patchify(imgs, in_channels, input_stabilizer_size, 
+                               (q, s), (s1,s2), padding=(pad1,pad2))#(bs,w_out,h_out,c,q,s)
+            p_copy = deepcopy(patches)
+            patches = patches.cuda()
+            p_copy = p_copy.cuda()
+            c_patches = torch.stack([patches, p_copy], dim=1) #(bs,2,w_out,h_out,c,q,s)
+            J = get_jacobian(patchnet, c_patches, c_idx=i, chunk=chunk)
+            J= J[:,:,0,:,:,:,:,:]
+            bs, c, w, h, _, _, _ = J.shape
+            print(J.shape)
+            J = J.transpose(1, 3).transpose(1, 2) #(bs, w_out, h_out, chunk, c, q, s)
+            J = J.reshape(bs*w*h, c, -1) #(bs*w_out*h_out, chunk, c*q*s)
+            if centering:
+                J_sum += torch.sum(J, dim=0).unsqueeze(0)  
+            J= J.cpu()
+            grads.append(J)          
+            n += bs         
+            #M += egop(patchnet, c_patches, classes, chunk_size).cpu()
+            #Js.append(egop(patchnet, c_patches, classes, chunk_size).cpu()) 
+            del imgs, patches, p_copy, c_patches, J
+            torch.cuda.empty_cache()
+            if idx >= max_batches:
+                break
+       
+        if centering:
+            J_mean = J_sum*1/(n*w*h) #(1, chunk, c*q*s)
+            
+        for batch_idx, J in enumerate(grads):
+            J = J.cuda()
+            if centering:
+                J= J- J_mean
+            M += torch.einsum('ncd,ncD->dD', J, J).cpu()
+            del J
         torch.cuda.empty_cache()
-        if idx >= MAX_NUM_IMGS:
-            break
-    net.cpu()
-    patchnet.cpu()
-    return M
+        
+    #net.cpu()
+    #patchnet.cpu()
+    return M*1/n
 
 
 def min_max(M):
@@ -246,34 +332,35 @@ def correlation(A, B):
     return torch.sum(M1.cuda() * M2.cuda()) / (norm1 * norm2)
 
 
-def verify_NFA(net, init_net, trainloader, layer_idx=0):
+def verify_NFA(net, init_net, trainloader, layer_idx=0, max_batches=2, classes=10, chunk_size=10, alpha=0.5, centering= True):
 
-    net = net.double()
-    init_net = init_net.double()
+    #net = net.double()
+    #init_net = init_net.double()
+    
     net, patchnet, M, M0, l_idx, conv_vals, in_channels, input_stabilizer_size = load_nn(net,
                                                      init_net,
                                                      layer_idx=layer_idx)
     (q, s), (pad1, pad2), (s1, s2) = conv_vals
-    '''
-    i_val = correlation(M0, M)
-    print("Correlation between Initial and Trained CNFM: ", i_val)'''
+  
 
     G = get_grads(net, in_channels, input_stabilizer_size, patchnet, trainloader,
                   kernel=(q, s),
                   padding=(pad1, pad2),
                   stride=(s1, s2),
-                  layer_idx=l_idx)
-    print("Shape after gradients: ", G.shape)
-    G = sqrt(G)
-    Gop = G.clone()
-    r_val = correlation(M, G)
-    print("Correlation between Trained Gcnn and AGOP: ", r_val)
+                  layer_idx=l_idx, max_batches=max_batches, classes=classes, chunk_size=chunk_size, centering=centering)
     
-    i_val = correlation(M0, G)
-    print("Correlation between Un-trained Gcnn and AGOP: ", i_val)
+    print("Shape after gradients: ", G.shape)
+    #G = sqrt(G)
+    G = matrix_power_eigendecomposition(G, alpha)
+    Gop = G.clone()
+    
+    print("Correlation between Initial and Trained CNFM: ", correlation(M0, M))
+    print("Correlation between Initial CNFM and Trained AGOP: ", correlation(M0, G))
+    print("Correlation between Trained CNFM and Trained AGOP: ", correlation(M, G))
 
+    del patchnet
     #print("Final: ", i_val, r_val)
-    return Gop 
+    return (Gop, correlation(M, G))
     #return i_val.data.numpy(), r_val.data.numpy()
 
 
@@ -283,6 +370,18 @@ def sqrt(G):
     s = torch.pow(s, 1./2)
     G = U @ torch.diag(s) @ Vt
     return G
+
+def matrix_power_eigendecomposition(G, alpha):      
+    eigenvalues, eigenvectors = torch.linalg.eigh(G)    
+    # Raise the eigenvalues to the power alpha
+    # Clamp to zero to handle potential small negative eigenvalues due to
+    # floating-point inaccuracies, which would result in NaN for fractional powers.
+    powered_eigenvalues = torch.clamp_min(eigenvalues, 0).pow(alpha)
+    V = eigenvectors
+    Lambda_powered = torch.diag(powered_eigenvalues)
+    powered_matrix = V @ Lambda_powered @ V.T
+    
+    return powered_matrix
 
 
 #TODO: ADD a visualizer for the image
