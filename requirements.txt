@@ -7,3 +7,4 @@ tqdm==4.67.1
 visdom==0.2.4
 torchmetrics
 cvxpy
+einops
