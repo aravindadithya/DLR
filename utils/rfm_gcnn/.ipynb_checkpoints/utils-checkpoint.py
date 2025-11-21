@@ -2,11 +2,11 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn.functional import pad
-
-from torch.linalg import norm, svd
 import torch.distributions as distributions
+from torch.nn.functional import pad
+from torch.linalg import norm, svd
 
+import os
 import numpy as np
 import cvxpy as cp
 from scipy.linalg import sqrtm, fractional_matrix_power
@@ -14,6 +14,7 @@ from matplotlib import pyplot as plt
 import math
 from copy import deepcopy
 from einops import rearrange
+
 
 #from groupy.gconv.make_gconv_indices import *
 
@@ -230,65 +231,129 @@ def multiply_patches(X, M, ps=3):
         p = P//ps
         q = Q//ps
         Xb = rearrange(Xb, 'm c (p w) (q h) -> (m p q) (c w h)', p=p, q=q, w=ps, h=ps)
+        #TODO: Check the datatypes of Xb and M.
         Xb = Xb @ M
         Xb = rearrange(Xb, '(m p q) (c w h) -> m c (p w) (q h)', m=m, p=p, q=q, c=c, w=ps, h=ps)
         Xs.append(Xb)
     return torch.cat(Xs, dim=0)
 
-def vis(tensor_input, max_channels, pwd, fname, title ="Tensor Channel View"):
+
+
+def vis(tensor_input, pwd, fname, title="NFM vs RFM"):
     """
-    Visualizes a single image tensor (C x H x W) by plotting each channel.
-    Handles tensors where C > 3.
+    Visualizes an N x P x 2 x C x H x W tensor, averaging across channels (C)
+    and plotting 'P' poses with precisely centered and slightly lowered titles.
     """
-    
+    # 1. Data Preprocessing
     if torch.is_tensor(tensor_input):
-        # Detach, move to CPU, and convert to NumPy
-        data = tensor_input.detach().cpu().numpy()
+        data = tensor_input.detach().cpu().numpy() 
     else:
         data = tensor_input
 
-    # Ensure we are in C x H x W format. If N x C x H x W (batch size 1), squeeze the batch dim.
-    if data.ndim == 4 and data.shape[0] == 1:
-        data = data.squeeze(0)
+    N, P, _, C_original, H, W = data.shape
+    num_poses = P
     
-    if data.ndim != 3:
-        print(f"Error: Expected 3 dimensions (C, H, W), got {data.ndim}. Aborting visualization.")
-        return
-
-    C, H, W = data.shape
-    channels_to_show = min(C, max_channels)
+    # *** CHANNEL AVERAGING ***
+    data_averaged = np.mean(data, axis=3, keepdims=True)
     
-    # Calculate grid dimensions (e.g., 9 channels -> 3x3 grid)
-    cols = math.ceil(math.sqrt(channels_to_show))
-    rows = math.ceil(channels_to_show / cols)
+    # 2. Setup Plotting Parameters
+    rows = N
+    cols = num_poses * 2 
+    
+    save_path = f'{pwd}/images'
+    os.makedirs(save_path, exist_ok=True)
 
-    fig, axes = plt.subplots(rows, cols, figsize=(cols * 2.5, rows * 2.5))
-    fig.suptitle(f"{title} ({C} Channels Total, Showing {channels_to_show})", fontsize=12)
+    COLOR_MAP = 'hot' 
+    
+    # Adjusted strip width
+    FIG_SIZE_X = cols * 2.5  
+    FIG_SIZE_Y = rows * 3.5 
+    
+    fig, axes = plt.subplots(rows, cols, figsize=(FIG_SIZE_X, FIG_SIZE_Y), squeeze=False) 
 
-    # Handle cases where axes is not a 2D array (e.g., if rows=1, cols=1)
-    if not isinstance(axes, np.ndarray):
-        axes = np.array([axes])
-    axes = axes.flatten()
+    # Define common scale
+    min_val = data_averaged.min()
+    max_val = data_averaged.max()
+    
+    conditions = [
+        ("backprob", 0),
+        ("No backprob ", 1)
+            ]
 
-    # Determine common scale for all channels (important for feature maps)
-    min_val = data.min()
-    max_val = data.max()
+    # 3. Plotting Loop (MUST run before centering to establish axis positions)
+    for n in range(N):
+        row_title = f"Sample {n+1}"
+        axes[n, 0].set_ylabel(row_title, rotation=90, labelpad=15, fontsize=12, weight='bold')
 
-    for i in range(channels_to_show):
-        ax = axes[i]
-        # Display the i-th channel as a grayscale map
-        # Using a fixed color scale (vmin/vmax) shows relative feature intensity
-        ax.imshow(data[i], cmap='viridis', vmin=min_val, vmax=max_val)
-        ax.set_title(f"Channel {i}", fontsize=10)
-        ax.axis('off')
+        for p in range(num_poses):
+            for cond_idx, (cond_title, data_index) in enumerate(conditions): 
+                col_idx = (p * 2) + cond_idx
+                ax = axes[n, col_idx]
+                
+                composite_image = data_averaged[n, p, data_index, 0]
+                ax.imshow(composite_image, cmap=COLOR_MAP, vmin=min_val, vmax=max_val)
+                
+                # Set the condition title (With/Without backprop) only for the top row (n=0)
+                if n == 0:
+                    short_title = cond_title.split('-')[0] 
+                    ax.set_title(short_title, fontsize=10) 
+                
+                ax.axis('off')
 
-    # Remove unused subplots
-    for j in range(channels_to_show, len(axes)):
-        fig.delaxes(axes[j])
+    # Apply tight_layout BEFORE calculating text positions for accurate coordinates
+    # We must ensure there is enough space left at the top for the titles
+    plt.tight_layout(rect=[0.02, 0.01, 1, 0.95]) 
+    
+    fig.suptitle(f"{title} (Averaged across {C_original} Channels)", fontsize=16, y=0.99)
 
-    plt.tight_layout(rect=[0, 0, 1, 0.96])
-    plt.savefig(f'{pwd}/images/{fname}')
-    plt.show()
+    y_pos = 0.94 
+    
+    for p in range(num_poses):
+        start_col = p * 2
+        end_col = p * 2 + 1
+        
+        # Get the axes objects for the two columns in the TOP row (n=0)
+        ax_start = axes[0, start_col]
+        ax_end = axes[0, end_col]
+        
+        # Get the bounding box of the two axes in figure coordinates
+        left_fig = ax_start.get_position().extents[0] 
+        right_fig = ax_end.get_position().extents[2] 
+        
+        # Calculate the exact center x-position
+        center_x_fig = (left_fig + right_fig) / 2
+        
+        # Place the Pose title using the calculated center_x_fig and new y_pos
+        fig.text(center_x_fig, y_pos, f"Pose {p+1}", 
+                 ha='center', fontsize=14, weight='bold', 
+                 transform=fig.transFigure)
+
+    full_file_path = f'{save_path}/{fname}'
+    plt.savefig(full_file_path)
+
+    print(f"Visualization saved to {full_file_path}")
+
+
+
+def nfmvrfm(img, layer, M, pose=0):
+    #TODO: Handle other poses
+    pat = patchify(img, layer)
+    pat = pat.transpose(2,3).transpose(1,2).transpose(3,4) #(bs, c, h_out, q, w_out, s)
+    pat = pat.reshape(pat.shape[0], pat.shape[1], pat.shape[2]*pat.shape[3], pat.shape[4]*pat.shape[5])
+
+    N =  get_nfm(layer, pose)
+    o1 = multiply_patches(pat.cuda(), N.cuda(), ps=layer.ksize)
+    o1 = reduce_image(o1, 0, ps=layer.ksize)
+
+    tup = find_covariance_matrix_m(layer, M, pose=pose)
+    M = torch.from_numpy(tup[0])
+    M = M.float()
+    #M = ut.sample_normal(M, layer.weight.shape[0])
+    o2 = multiply_patches(pat.cuda(), M.cuda(), ps=layer.ksize)
+    o2 = reduce_image(o2, 0, ps=layer.ksize)
+    combined_tensor = torch.stack((o1, o2), dim=1)
+    return combined_tensor
+    
 
 ################################ GCNN HELPER FUNCTIONS ###############################################
 
@@ -351,10 +416,12 @@ def get_permutation_matrix(v1, v2):
 def sample_normal(covariance_matrix_M, num_rows_k):
    
     # Create a mean vector of zeros, compatible with the dimensions of M
+    device = covariance_matrix_M.device
     dtype = covariance_matrix_M.dtype
     matrix_dim_t = covariance_matrix_M.shape[0]
-    mean_vector = torch.zeros(matrix_dim_t, dtype=dtype, device=device)
-    mean_vector.to(device)
+    #mean_vector = torch.zeros(matrix_dim_t, dtype=dtype)
+    mean_vector = torch.zeros((matrix_dim_t,), dtype=dtype, device=device)
+    #mean_vector.to(device)
     try:
         mvn = distributions.MultivariateNormal(loc=mean_vector, covariance_matrix=covariance_matrix_M)
     except Exception as e:
@@ -375,7 +442,7 @@ def sample_normal(covariance_matrix_M, num_rows_k):
 
     return sampled_matrix
 
-def find_covariance_matrix_m(layer, S_target_np, solver_name='SCS'):
+def find_covariance_matrix_m(layer, S_target_np, pose=0, solver_name='SCS'):
 
     dummy= deepcopy(layer)
     dummy.out_channels = 1
@@ -395,7 +462,7 @@ def find_covariance_matrix_m(layer, S_target_np, solver_name='SCS'):
     print("tw_shape",tw_test.shape)
 
     P_matrices = []
-    v1 = tw_test[0][0].reshape(-1) 
+    v1 = tw_test[0][pose].reshape(-1) 
     for i in range(tw_test.shape[1]):
         v2 = tw_test[0][i].reshape(-1) 
         P = get_permutation_matrix(v1, v2)

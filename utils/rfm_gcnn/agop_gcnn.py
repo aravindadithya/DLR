@@ -88,6 +88,7 @@ def get_jacobian(net, data, c_idx=0, chunk=100):
         #data: (bs, 2, w_out, h_out, c, q, s)
         return torch.vmap(jacrev(single_net))(data) #(bs, chunk, 2, w_out, h_out, c, q, s)
 
+
 def egop(model, z, classes=10, chunk_idxs=10):
     ajop = 0
     c = classes

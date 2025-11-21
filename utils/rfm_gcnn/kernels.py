@@ -4,119 +4,111 @@ import torch
 import numpy as np
 from typing import Union
 
-def euclidean_distances(samples, centers, center_batch_size=128, squared=True):
-    """
-    Computes the Summed Euclidean Squared Distance (N, M) by batching the 
-    M (centers) dimension to conserve memory.
 
-    Args:
-        samples: (N, P, Q, K) tensor.
-        centers: (M, P, Q, K) tensor.
-        center_batch_size (int): Number of centers (M) to process simultaneously.
-        squared (bool): If False, returns the true total distance.
-    """
+
+def euclidean_distances_M(samples, centers, M=None, squared=True):
+    '''
+    Computes the squared (Mahalanobis-like or Euclidean) distance for K features, 
+    resulting in a matrix of shape (N, M, P, Q). Uses the expanded distance formula 
+    to avoid creating the large difference tensor (N, M, P, Q, K).
+
+    Inputs:
+        samples: (N, P, Q, K)
+        centers: (M, P, Q, K)
+        M: (K, K) for Mahalanobis-like distance, or None for Euclidean.
     
-    M_total = centers.size(0)
-    all_dists = []
-
-    # Iterate over center batches
-    for start_idx in range(0, M_total, center_batch_size):
-        end_idx = min(start_idx + center_batch_size, M_total)
-        centers_batch = centers[start_idx:end_idx]
-        
-        # 1. Expand samples (N, 1, P, Q, K) and centers_batch (1, M_batch, P, Q, K)
-        # M_batch is small (e.g., 128), which keeps the intermediate 'diff' tensor small.
-        samples_e = samples.unsqueeze(1)
-        centers_e = centers_batch.unsqueeze(0)
-        
-        # diff: (N, M_batch, P, Q, K)
-        diff = samples_e - centers_e 
-        
-        # 2. Compute (Si[p, q, k] - Cj[p, q, k])^2 and sums over k
-        # dist_pq: || Si[p, q, :] - Cj[p, q, :] ||_2^2. Shape: (N, M_batch, P, Q)
-        dist_pq = diff.pow(2).sum(dim=-1) 
-
-        # Apply square root if requested
-        if not squared:
-            final_dist_batch = dist_pq.clamp(min=0).sqrt()
-            
-        # 3. Sum over P and Q dimensions
-        # final_dist_batch: sumP( sumQ( dist_pq ) ). Shape: (N, M_batch)
-        final_dist_batch = dist_pq.sum(dim=(-1, -2))     
-            
-        all_dists.append(final_dist_batch)
-        
-        # Explicitly clear temporary tensors to help garbage collection
-        del centers_batch, samples_e, centers_e, diff, dist_pq, final_dist_batch
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
-    # Concatenate all (N, M_batch) tensors back into a single (N, M_total) tensor
-    final_dist = torch.cat(all_dists, dim=1)
+    Returns:
+        Tensor of shape (N, M) containing the summed squared distance across P and Q.
+    '''
     
-    return final_dist
+    # 1. Expand dimensions for necessary broadcasting: (N, 1, P, Q, K) and (1, M, P, Q, K)
+    samples_expanded = samples.unsqueeze(1) # (N, 1, P, Q, K)
+    centers_expanded = centers.unsqueeze(0) # (1, M, P, Q, K)
 
-def euclidean_distances_M(samples, centers, M, center_batch_size=128, squared=True):
-    """
-    Computes the Summed Mahalanobis Squared Distance (N, M) by batching the 
-    M (centers) dimension to conserve memory. This avoids creating the massive 
-    (N, M, P, Q, K) difference tensor all at once.
+    if M is None:
+        # --- Euclidean Distance: ||a||^2 + ||b||^2 - 2 a.T b ---
+        
+        # Norm Terms: ||a||^2 and ||b||^2
+        samples_norm2_exp = samples_expanded.pow(2).sum(dim=-1, keepdim=True)  # (N, 1, P, Q, 1)
+        centers_norm2_exp = centers_expanded.pow(2).sum(dim=-1, keepdim=True)  # (1, M, P, Q, 1)
+        
+        # Cross Term: 2 * a.T b
+        dot_product = torch.sum(samples_expanded * centers_expanded, dim=-1, keepdim=True) # (N, M, P, Q, 1)
+        
+        # Squared Distance for corresponding patches (P, Q) only
+        squared_dist_PQ_K = samples_norm2_exp + centers_norm2_exp - 2.0 * dot_product 
+        
+    else:
+        # --- Mahalanobis Distance: a^T M a + b^T M b - 2 a^T M b ---
+        
+        # Step A: Compute Weighted Norm Terms (a^T M a and b^T M b)
+        # 1. Apply M to each vector: a @ M -> (N, 1, P, Q, K)
+        samples_M = torch.matmul(samples_expanded, M)
+        centers_M = torch.matmul(centers_expanded, M)
+        
+        # 2. Compute Weighted Norm: (a @ M) * a -> sum over K -> (N, 1, P, Q, 1)
+        samples_norm2_M = torch.sum(samples_M * samples_expanded, dim=-1, keepdim=True)
+        centers_norm2_M = torch.sum(centers_M * centers_expanded, dim=-1, keepdim=True)
+        
+        # 1. Compute Cross Term: (a @ M) @ b.T
+        # This is equivalent to summing the element-wise product of (a @ M) and b over K.
+        # Shape: (N, M, P, Q, K)
+        cross_product_M = torch.sum(samples_M * centers_expanded, dim=-1, keepdim=True)
+        
+        # Step C: Combine Terms
+        squared_dist_PQ_K = samples_norm2_M + centers_norm2_M - 2.0 * cross_product_M
 
-    Metric: D_M^2(Si, Cj) = sumP( sumQ( (Si[p,q,:] - Cj[p,q,:])^T M (Si[p,q,:] - Cj[p,q,:]) ) )
+    # Final clamping and sqrt for non-squared distance (if requested)
+    if not squared:
+        distances.clamp_(min=0).sqrt_()
+        
+    # Remove the singleton K dimension (which is 1)
+    squared_dist_PQ = squared_dist_PQ_K.squeeze(-1) # Shape: (N, M, P, Q)
 
-    Args:
-        samples: (N, P, Q, K) tensor.
-        centers: (M, P, Q, K) tensor.
-        M: Weighting matrix. Must be (K, K) or (K).
-        center_batch_size (int): Number of centers (M) to process simultaneously.
-        squared (bool): If False, returns the true total distance.
-    """
+    # 2. Sum across P and Q patches
+    distances = torch.sum(squared_dist_PQ, dim=(2, 3)) # Final shape: (N, M)
     
-    M_total = centers.size(0)
-    all_dists = []
-    
-    # 1. Handle diagonal M case (1D tensor of weights) for compatibility
-    # If M is 1D (M_diag), convert it to a full matrix for the matrix multiplication
-    if M.dim() == 1:
-        M = torch.diag_embed(M)
+    return distances
 
-    # 2. Iterate over center batches
-    for start_idx in range(0, M_total, center_batch_size):
-        end_idx = min(start_idx + center_batch_size, M_total)
-        centers_batch = centers[start_idx:end_idx]
-        
-        # Expand samples (N, 1, P, Q, K) and centers_batch (1, M_batch, P, Q, K)
-        samples_e = samples.unsqueeze(1)
-        centers_e = centers_batch.unsqueeze(0)
-        
-        # diff: (N, M_batch, P, Q, K) - M_batch is small to conserve memory
-        diff = samples_e - centers_e 
-        
-        # 3. Calculate the weighted difference: d @ M 
-        weighted_diff = diff @ M # (N, M_batch, P, Q, K)
 
-        # 4. Calculate d^T M d (sum over K)
-        # dist_pq: (N, M_batch, P, Q)
-        dist_pq = (weighted_diff * diff).sum(dim=-1) 
 
-        # 5. Apply square root if requested
-        if not squared:
-            dist_pq = dist_pq.clamp(min=0).sqrt()
-            
-        # 6. Sum over P and Q dimensions
-        final_dist_batch = dist_pq.sum(dim=(-1, -2)) # (N, M_batch)
-            
-        all_dists.append(final_dist_batch)
-        
-        # Optional: Explicitly clear temporary tensors to help garbage collection
-        del centers_batch, samples_e, centers_e, diff, weighted_diff, dist_pq, final_dist_batch
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+'''
+def euclidean_distances(samples, centers, squared=True):
+    samples_norm2 = samples.pow(2).sum(-1)
+    if samples is centers:
+        centers_norm2 = samples_norm2
+    else:
+        centers_norm2 = centers.pow(2).sum(-1)
 
-    # 7. Concatenate all batches back into a single (N, M_total) tensor
-    final_dist = torch.cat(all_dists, dim=1)
-    
-    return final_dist
+    distances = -2 * samples @ centers.T
+    distances.add_(samples_norm2.view(-1, 1))
+    distances.add_(centers_norm2)
+    if not squared:
+        distances.clamp_(min=0).sqrt_()
+
+    return distances
+
+def euclidean_distances_M(samples, centers, M, squared=True):
+    if len(M.shape)==1:
+        return euclidean_distances_M_diag(samples, centers, M, squared=squared)
+
+    samples_norm2 = ((samples @ M) * samples).sum(-1)
+
+    if samples is centers:
+        centers_norm2 = samples_norm2
+    else:
+        centers_norm2 = ((centers @ M) * centers).sum(-1)
+
+    distances = -2 * (samples @ M) @ centers.T
+    distances.add_(samples_norm2.view(-1, 1))
+    distances.add_(centers_norm2)
+
+    if not squared:
+        distances.clamp_(min=0).sqrt_()
+
+    return distances
+'''
+
 
 '''
 def euclidean_distances_M_diag(samples, centers, M, squared=True):
@@ -188,11 +180,11 @@ def gaussian(samples, centers, bandwidth):
     kernel_mat.exp_()
     return kernel_mat
 
-
+'''
 def gaussian_M(samples, centers, M, bandwidth):
     assert bandwidth > 0
     if M is None:
-        kernel_mat = euclidean_distances(samples, centers, squared=True)
+        kernel_mat = euclidean_distances_M(samples, centers, squared=True)
     else:
         kernel_mat = euclidean_distances_M(samples, centers, M, squared=True)
     kernel_mat.clamp_(min=0)
@@ -200,6 +192,78 @@ def gaussian_M(samples, centers, M, bandwidth):
     kernel_mat.mul_(-gamma)
     kernel_mat.exp_()
     return kernel_mat
+'''
+
+def gaussian_M(samples, centers, M, bandwidth):
+    
+    '''
+    Computes the final summed Gaussian kernel result by ITERATING over 
+    the P and Q patches, guaranteeing minimal memory usage.
+    
+    Returns: Final kernel matrix of shape (N, M).
+    '''
+    samples = samples.cuda()
+    centres = centers.cuda()
+    M = M.cuda()
+    N, P, Q, K = samples.shape
+    M_val, _, _, _ = centers.shape
+    device = samples.device
+    dtype = samples.dtype
+    
+    # Initialize the final result on the correct device/dtype
+    final_kernel_mat = torch.zeros((N, M_val), device=device, dtype=dtype)
+    
+    # 1. Pre-calculate M-weighted centers for Mahalanobis
+    if M is not None:
+        # Pre-multiply all centers by M: (M*P*Q, K) -> (M*P*Q, K)
+        centers_flat = centers.reshape(-1, K)
+        centers_M_flat = centers_flat @ M
+        centers_M = centers_M_flat.reshape(M_val, P, Q, K)
+
+    # 2. Loop over P and Q patches (Guaranteed memory constraint)
+    for p in range(P):
+        for q in range(Q):
+            # Extract current patches for samples (N, K) and centers (M, K)
+            a = samples[:, p, q, :] # (N, K)
+            b = centers[:, p, q, :] # (M, K)
+            
+            # --- Norm Terms Calculation (a^T M a and b^T M b) ---
+            if M is None:
+                # Euclidean Norm: ||a||^2 (N), ||b||^2 (M)
+                a_norm2 = a.pow(2).sum(-1) # (N)
+                b_norm2 = b.pow(2).sum(-1) # (M)
+                
+                # Cross Term: 2 * a.T b
+                cross_term = 2.0 * (a @ b.T) # (N, M)
+                
+            else:
+                # Mahalanobis Norm: a^T M a = (a @ M) * a
+                # Reusing the pre-multiplied centers_M
+                a_M = a @ M          # (N, K)
+                b_M = centers_M[:, p, q, :] # (M, K)
+
+                a_norm2 = (a_M * a).sum(-1) # (N)
+                b_norm2 = (b_M * b).sum(-1) # (M)
+                
+                # Cross Term: 2 * a.T M b = 2 * (a @ M) @ b.T
+                cross_term = 2.0 * (a_M @ b.T) # (N, M)
+            
+            # --- Kernel Calculation ---
+            # Squared Distance: ||a-b||^2 = ||a||^2 + ||b||^2 - 2 a.T b
+            # Broadcasting: (N) -> (N, 1), (M) -> (1, M). Result: (N, M)
+            squared_dist = a_norm2.unsqueeze(1) + b_norm2.unsqueeze(0) - cross_term 
+            
+            # Apply Gaussian Kernel
+            # K_pq = exp(-gamma * D^2_pq)
+            gamma = 1.0 / (2.0 * bandwidth ** 2)
+            
+            kernel_pq = squared_dist.clamp(min=0).mul(-gamma).exp()
+            
+            # Sum the kernel values
+            final_kernel_mat.add_(kernel_pq)
+            
+    return final_kernel_mat
+
 
 
 def dispersal(samples, centers, bandwidth, gamma):
@@ -420,4 +484,118 @@ def get_laplace_gen_agop(
         agop = grads.T@grads
         return agop
 
+'''
+def euclidean_distances(samples, centers, center_batch_size=128, squared=True):
+    """
+    Computes the Summed Euclidean Squared Distance (N, M) by batching the 
+    M (centers) dimension to conserve memory.
+
+    Args:
+        samples: (N, P, Q, K) tensor.
+        centers: (M, P, Q, K) tensor.
+        center_batch_size (int): Number of centers (M) to process simultaneously.
+        squared (bool): If False, returns the true total distance.
+    """
+    
+    M_total = centers.size(0)
+    all_dists = []
+
+    # Iterate over center batches
+    for start_idx in range(0, M_total, center_batch_size):
+        end_idx = min(start_idx + center_batch_size, M_total)
+        centers_batch = centers[start_idx:end_idx]
         
+        # 1. Expand samples (N, 1, P, Q, K) and centers_batch (1, M_batch, P, Q, K)
+        # M_batch is small (e.g., 128), which keeps the intermediate 'diff' tensor small.
+        samples_e = samples.unsqueeze(1)
+        centers_e = centers_batch.unsqueeze(0)
+        
+        # diff: (N, M_batch, P, Q, K)
+        diff = samples_e - centers_e 
+        
+        # 2. Compute (Si[p, q, k] - Cj[p, q, k])^2 and sums over k
+        # dist_pq: || Si[p, q, :] - Cj[p, q, :] ||_2^2. Shape: (N, M_batch, P, Q)
+        dist_pq = diff.pow(2).sum(dim=-1) 
+
+        # Apply square root if requested
+        if not squared:
+            final_dist_batch = dist_pq.clamp(min=0).sqrt()
+            
+        # 3. Sum over P and Q dimensions
+        # final_dist_batch: sumP( sumQ( dist_pq ) ). Shape: (N, M_batch)
+        final_dist_batch = dist_pq.sum(dim=(-1, -2))     
+            
+        all_dists.append(final_dist_batch)
+        
+        # Explicitly clear temporary tensors to help garbage collection
+        del centers_batch, samples_e, centers_e, diff, dist_pq, final_dist_batch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    # Concatenate all (N, M_batch) tensors back into a single (N, M_total) tensor
+    final_dist = torch.cat(all_dists, dim=1)
+    
+    return final_dist
+
+def euclidean_distances_M(samples, centers, M, center_batch_size=128, squared=True):
+    """
+    Computes the Summed Mahalanobis Squared Distance (N, M) by batching the 
+    M (centers) dimension to conserve memory. This avoids creating the massive 
+    (N, M, P, Q, K) difference tensor all at once.
+
+    Metric: D_M^2(Si, Cj) = sumP( sumQ( (Si[p,q,:] - Cj[p,q,:])^T M (Si[p,q,:] - Cj[p,q,:]) ) )
+
+    Args:
+        samples: (N, P, Q, K) tensor.
+        centers: (M, P, Q, K) tensor.
+        M: Weighting matrix. Must be (K, K) or (K).
+        center_batch_size (int): Number of centers (M) to process simultaneously.
+        squared (bool): If False, returns the true total distance.
+    """
+    
+    M_total = centers.size(0)
+    all_dists = []
+    
+    # 1. Handle diagonal M case (1D tensor of weights) for compatibility
+    # If M is 1D (M_diag), convert it to a full matrix for the matrix multiplication
+    if M.dim() == 1:
+        M = torch.diag_embed(M)
+
+    # 2. Iterate over center batches
+    for start_idx in range(0, M_total, center_batch_size):
+        end_idx = min(start_idx + center_batch_size, M_total)
+        centers_batch = centers[start_idx:end_idx]
+        
+        # Expand samples (N, 1, P, Q, K) and centers_batch (1, M_batch, P, Q, K)
+        samples_e = samples.unsqueeze(1)
+        centers_e = centers_batch.unsqueeze(0)
+        
+        # diff: (N, M_batch, P, Q, K) - M_batch is small to conserve memory
+        diff = samples_e - centers_e 
+        
+        # 3. Calculate the weighted difference: d @ M 
+        weighted_diff = diff @ M # (N, M_batch, P, Q, K)
+
+        # 4. Calculate d^T M d (sum over K)
+        # dist_pq: (N, M_batch, P, Q)
+        dist_pq = (weighted_diff * diff).sum(dim=-1) 
+
+        # 5. Apply square root if requested
+        if not squared:
+            dist_pq = dist_pq.clamp(min=0).sqrt()
+            
+        # 6. Sum over P and Q dimensions
+        final_dist_batch = dist_pq.sum(dim=(-1, -2)) # (N, M_batch)
+            
+        all_dists.append(final_dist_batch)
+        
+        # Optional: Explicitly clear temporary tensors to help garbage collection
+        del centers_batch, samples_e, centers_e, diff, weighted_diff, dist_pq, final_dist_batch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    # 7. Concatenate all batches back into a single (N, M_total) tensor
+    final_dist = torch.cat(all_dists, dim=1)
+    
+    return final_dist
+'''
