@@ -230,10 +230,12 @@ def multiply_patches(X, M, ps=3):
         m, c, P, Q = Xb.shape
         p = P//ps
         q = Q//ps
-        Xb = rearrange(Xb, 'm c (p w) (q h) -> (m p q) (c w h)', p=p, q=q, w=ps, h=ps)
+        Xb = rearrange(Xb, 'm c (p h) (q w) -> (m p q) (c h w)', p=p, q=q, w=ps, h=ps)
         #TODO: Check the datatypes of Xb and M.
         Xb = Xb @ M
-        Xb = rearrange(Xb, '(m p q) (c w h) -> m c (p w) (q h)', m=m, p=p, q=q, c=c, w=ps, h=ps)
+        #Xb = rearrange(Xb, '(m p q) (c w h) -> m c (p w) (q h)', m=m, p=p, q=q, c=c, w=ps, h=ps)
+        Xb = rearrange(Xb, '(m p q) (c h w) -> m (c h w) p q', m=m, p=p, q=q, c=c, w=ps, h=ps) 
+        Xb = norm(Xb, dim=1, keepdim=True)
         Xs.append(Xb)
     return torch.cat(Xs, dim=0)
 
@@ -343,14 +345,14 @@ def nfmvrfm(img, layer, M, pose=0):
 
     N =  get_nfm(layer, pose)
     o1 = multiply_patches(pat.cuda(), N.cuda(), ps=layer.ksize)
-    o1 = reduce_image(o1, 0, ps=layer.ksize)
+    #o1 = reduce_image(o1, 0, ps=layer.ksize)
 
     tup = find_covariance_matrix_m(layer, M, pose=pose)
     M = torch.from_numpy(tup[0])
     M = M.float()
     #M = ut.sample_normal(M, layer.weight.shape[0])
     o2 = multiply_patches(pat.cuda(), M.cuda(), ps=layer.ksize)
-    o2 = reduce_image(o2, 0, ps=layer.ksize)
+    #o2 = reduce_image(o2, 0, ps=layer.ksize)
     combined_tensor = torch.stack((o1, o2), dim=1)
     return combined_tensor
     
@@ -480,7 +482,7 @@ def find_covariance_matrix_m(layer, S_target_np, pose=0, solver_name='SCS'):
     M = cp.Variable((M_dim, M_dim), symmetric=True)
     sum_term = 0
     for P in P_matrices:
-        sum_term += P.T @ M @ P
+        sum_term += P @ M @ P.T
 
     objective = cp.Minimize(cp.norm(sum_term - S_target_np, 'fro'))
     
