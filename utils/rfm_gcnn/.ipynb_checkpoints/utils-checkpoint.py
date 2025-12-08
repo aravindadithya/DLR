@@ -136,7 +136,7 @@ def patchify(x, layer, pad_type='zeros'):
     stride_size = layer.stride
     padding = layer.padding 
     
-    x = x.view(input_shape[0], in_channels*ip_stab, input_shape[-2], input_shape[-1])
+    x = x.reshape(input_shape[0], in_channels*ip_stab, input_shape[-2], input_shape[-1])
     q1, q2 = patch_size
     s1, s2 = stride_size
     if padding is None:
@@ -364,7 +364,7 @@ def trans_filter(w, inds):
     #TODO: Reference this function directly from the SplitConv2d class of gcnn.
     inds_reshape = inds.reshape((-1, inds.shape[-1])).astype(np.int64)
     w_indexed = w[:, :, inds_reshape[:, 0].tolist(), inds_reshape[:, 1].tolist(), inds_reshape[:, 2].tolist()]
-    w_indexed = w_indexed.view(w_indexed.size()[0], w_indexed.size()[1],
+    w_indexed = w_indexed.reshape(w_indexed.size()[0], w_indexed.size()[1],
                                     inds.shape[0], inds.shape[1], inds.shape[2], inds.shape[3])
     w_transformed = w_indexed.permute(0, 2, 1, 3, 4, 5)
     return w_transformed.contiguous()
@@ -384,13 +384,13 @@ def get_nfm(layer, pose=None):
         tw = tw[:, pose, :, :, :, :]
         tw_shape = (layer.out_channels, layer.in_channels * layer.input_stabilizer_size,
                             layer.ksize, layer.ksize)
-        W = tw.view(tw_shape)
+        W = tw.reshape(tw_shape)
     else:     
         tw = trans_filter(layer.weight, layer.inds)   
         tw_shape = (layer.out_channels * layer.output_stabilizer_size,
                             layer.in_channels * layer.input_stabilizer_size,
                             layer.ksize, layer.ksize)
-        W = tw.view(tw_shape)
+        W = tw.reshape(tw_shape)
         
     k, ki, q, s= W.shape
     
@@ -456,7 +456,7 @@ def find_covariance_matrix_m(layer, S_target_np, pose=0, solver_name='SCS'):
     tw_shape = (dummy.out_channels * dummy.output_stabilizer_size,
                         dummy.in_channels * dummy.input_stabilizer_size,
                         dummy.ksize, dummy.ksize)
-    tw = tw.view(tw_shape)
+    tw = tw.reshape(tw_shape)
     tw_test= tw.reshape(dummy.out_channels, dummy.output_stabilizer_size,
                         dummy.in_channels , dummy.input_stabilizer_size,
                         dummy.ksize, dummy.ksize)

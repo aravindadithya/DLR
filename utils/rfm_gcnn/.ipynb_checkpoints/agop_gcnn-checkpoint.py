@@ -13,17 +13,20 @@ from torch.func import jacrev
 #from torch.nn.functional import pad
 from torch.linalg import norm, svd, eig
 from torchvision import models
+
 import random
 import numpy as np
 import visdom
+from copy import deepcopy
 
 from utils.rfm_gcnn.utils import patchify, trans_filter, sqrt, matrix_power_eigendecomposition, correlation, min_max, get_nfm
 from utils.groupy.gconv.pytorch_gconv.splitgconv2d import P4ConvZ2, P4ConvP4, P4MConvZ2, P4MConvP4M
 from groupy.gconv.make_gconv_indices import *
-from copy import deepcopy
+
 
 #Todo: Import these blocks directly by avoiding model2
-#from trained_models.CIFAR.model2.model2 import BasicBlock, Bottleneck
+from trained_models.CIFAR.model2.model2 import BasicBlock, Bottleneck
+#from trained_models.MNIST.model4.model4 import BasicBlock, Bottleneck
 
 SEED = 2323
 
@@ -49,13 +52,14 @@ class PatchConvLayer(nn.Module):
         tw_shape = (self.layer.out_channels * self.layer.output_stabilizer_size,
                     self.layer.in_channels * self.layer.input_stabilizer_size,
                     self.layer.ksize, self.layer.ksize)
-        tw = tw.view(tw_shape)
+        tw = tw.reshape(tw_shape)
         #print("tw shape",tw.shape)
         #print("Patch_shape", patches.shape)
         out = torch.einsum('nhwcqr, kcqr -> nhwk', patches, tw)
         n, w, h, k = out.shape
         out = out.transpose(1, 3).transpose(2, 3) #(n,k,h_out,w_out)
-        out = out.view(n, self.layer.out_channels, self.layer.output_stabilizer_size, h, w)
+        #TODO: Why does view work here? Ideally after transpose view should throw an exception because contiguity is violated.
+        out = out.reshape(n, self.layer.out_channels, self.layer.output_stabilizer_size, h, w)
         #print("out_shape", out.shape)
         return out
 
@@ -87,6 +91,7 @@ def get_jacobian(net, data, c_idx=0, chunk=100):
         # Parallelize across the images.
         #data: (bs, 2, w_out, h_out, c, q, s)
         return torch.vmap(jacrev(single_net))(data) #(bs, chunk, 2, w_out, h_out, c, q, s)
+
 
 def egop(model, z, classes=10, chunk_idxs=10):
     ajop = 0
@@ -160,23 +165,22 @@ def load_nn(net, init_net, layer_idx=0):
         layer_init = deepcopy(init_net.features[l_idx].features[0])        
                 
     # Compute WtW which is (c*q*s,c*q*s) matrix
-    M = get_rfm(layer)
-    M0 = get_rfm(layer_init)
+    M = get_nfm(layer)
+    M0 = get_nfm(layer_init)
 
-    return net, patchnet, M, M0, l_idx, [(q, s), (pad1,pad2), (s1,s2)], in_channels, input_stabilizer_size
+    return net, patchnet, M, M0, l_idx, layer
 
-
-def get_grads(net, in_channels, input_stabilizer_size, patchnet, trainloader,
-              kernel=(3,3), padding=(1,1),
-              stride=(1,1), layer_idx=0, max_batches=2, classes=10, chunk_size=10, centering=True):
+def get_grads(net, patchnet, trainloader, layer_idx, layer, max_batches=2, classes=10, chunk_size=10, centering=True):
+    
     net.eval()
     net.cuda()
     patchnet.eval()
     patchnet.cuda()
+    '''
     q, s = kernel
     pad1, pad2 = padding
     s1, s2 = stride
-
+    '''
     M = 0
     ajop = 0
     J_sum=0
@@ -203,8 +207,7 @@ def get_grads(net, in_channels, input_stabilizer_size, patchnet, trainloader,
                 imgs = imgs.float()
                 # Run the first half of the network wrt to the current layer 
                 imgs = net.features[:layer_idx](imgs).cpu() #(bs,c,h,w)
-            patches = patchify(imgs, in_channels, input_stabilizer_size, 
-                               (q, s), (s1,s2), padding=(pad1,pad2))#(bs,w_out,h_out,c,q,s)
+            patches = patchify(imgs, layer)#(bs,w_out,h_out,c,q,s)
             p_copy = deepcopy(patches)
             patches = patches.cuda()
             p_copy = p_copy.cuda()
@@ -248,23 +251,22 @@ def verify_NFA(net, init_net, trainloader, layer_idx=0, max_batches=2, classes=1
     #net = net.double()
     #init_net = init_net.double()
     
-    net, patchnet, M, M0, l_idx, conv_vals, in_channels, input_stabilizer_size = load_nn(net,
-                                                     init_net,
-                                                     layer_idx=layer_idx)
-    (q, s), (pad1, pad2), (s1, s2) = conv_vals
-  
+    net, patchnet, M, M0, l_idx, layer = load_nn(net, init_net, layer_idx=layer_idx)
+    #(q, s), (pad1, pad2), (s1, s2) = conv_vals
 
-    G = get_grads(net, in_channels, input_stabilizer_size, patchnet, trainloader,
-                  kernel=(q, s),
-                  padding=(pad1, pad2),
-                  stride=(s1, s2),
-                  layer_idx=l_idx, max_batches=max_batches, classes=classes, chunk_size=chunk_size, centering=centering)
+    
+
+    G = get_grads(net, patchnet, trainloader, l_idx, 
+                 layer, max_batches=max_batches, classes=classes, chunk_size=chunk_size, centering=centering)
     
     print("Shape after gradients: ", G.shape)
     #G = sqrt(G)
     G = matrix_power_eigendecomposition(G, alpha)
     Gop = G.clone()
     
+    G = G.cuda()
+    M0 = M0.cuda()
+    M = M.cuda()
     print("Correlation between Initial and Trained CNFM: ", correlation(M0, M))
     print("Correlation between Initial CNFM and Trained AGOP: ", correlation(M0, G))
     print("Correlation between Trained CNFM and Trained AGOP: ", correlation(M, G))
