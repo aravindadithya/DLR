@@ -1,89 +1,50 @@
 #!/bin/bash
 
-# Script to start Visdom server in the background and Jupyter Lab in the foreground.
+# --- Inputs ---
+REPO_NAME=$1
+REPO_BRANCH=${2:-"master"}
+SKIP_LFS=${3:-0}
 
-# Function to check if a process is already running on a port
-is_port_in_use() {
-  # Prefer 'ss' from iproute2 over 'netstat' from net-tools as 'ss' is more modern.
-  # If 'ss' is not found, fallback to 'netstat'.
-  if command -v ss &> /dev/null; then
-    ss -tuln | grep ":$1 " > /dev/null
-  elif command -v netstat &> /dev/null; then
-    netstat -tuln | grep ":$1 " > /dev/null
-  else
-    echo "Neither ss nor netstat found. Cannot check port status reliably." >&2
-    return 1 # Indicate failure to check
-  fi
-}
+if [ -z "$REPO_NAME" ]; then
+    echo "ERROR: Repository name is required."
+    exit 1
+fi
 
-echo "--- Starting Services ---"
+echo "--- Environment Sanity Check ---"
+python3 -c "import torch; print(f'PyTorch: {torch.__version__} | CUDA: {torch.version.cuda} | GPU: {torch.cuda.is_available()}')"
 
-# --- Update or Clone Repository ---
-# We perform this at startup to ensure the latest code is used.
-REPO_DIR="/work/DLR"
-REPO_URL="https://github.com/aravindadithya/DLR"
-REPO_BRANCH="research4"
+# --- Repo Logic ---
+REPO_DIR="/work/$REPO_NAME"
+# Ensure the URL is correct. If private, use a Token.
+REPO_URL="https://github.com/aravindadithya/$REPO_NAME.git"
 
-echo "Updating or cloning the repository from $REPO_URL..."
 git config --global --add safe.directory "$REPO_DIR"
 
-# Check if the repository directory already exists.
-if [ -d "$REPO_DIR" ]; then
-    echo "Repository directory found. Pulling latest changes..."
-    cd "$REPO_DIR" || { echo "Failed to change directory to $REPO_DIR. Exiting."; exit 1; }
-    
-    # Retry loop for git pull
-    count=0
-    while [ $count -lt 5 ]; do
-        GIT_LFS_SKIP_SMUDGE=1 git pull && break
-        count=$((count+1))
-        echo "Git pull failed, retrying ($count/5)..."
-        sleep 5
-    done
-    cd /work
+if [ -d "$REPO_DIR/.git" ]; then
+    echo "Updating $REPO_NAME ($REPO_BRANCH)..."
+    cd "$REPO_DIR" || exit 1
+    GIT_LFS_SKIP_SMUDGE=$SKIP_LFS git pull origin "$REPO_BRANCH"
 else
-    echo "Repository directory not found. Cloning the repository..."
-    cd /work || { echo "Failed to change directory to /workspace. Exiting."; exit 1; }
-    
-    # Retry loop for git clone
-    count=0
-    while [ $count -lt 5 ]; do
-        # Clone the repository with the specified branch. LFS smudge is not skipped.
-        GIT_LFS_SKIP_SMUDGE=1 git clone --branch research4 https://github.com/aravindadithya/DLR && break
-        count=$((count+1))
-        echo "Git clone failed, retrying ($count/5)..."
-        sleep 5
-    done
-    cd /work
+    echo "Cloning $REPO_NAME ($REPO_BRANCH)..."
+    cd /work || exit 1
+    # If this fails, the repo is likely private or the URL is wrong
+    GIT_LFS_SKIP_SMUDGE=$SKIP_LFS git clone --branch "$REPO_BRANCH" "$REPO_URL" || echo "Clone failed! Check repo visibility."
 fi
 
+cd /work
 
-# --- Start Visdom Server ---
-VISDOM_PORT=8097
-echo "Attempting to start Visdom server on port $VISDOM_PORT..."
+# --- Start Visdom ---
+nohup python3 -m visdom.server -port 8097 > /work/visdom.log 2>&1 &
+echo "Visdom started on port 8097"
 
-if is_port_in_use "$VISDOM_PORT"; then
-  echo "WARNING: Port $VISDOM_PORT is already in use. Visdom might not start correctly."
-else
-  # Start Visdom in the background using the Python module directly.
-  # No 'conda run' needed as we are not in a conda environment.
-  python3 -m visdom.server -port "$VISDOM_PORT" &
-  # Capture the PID of the background process.
-  VISDOM_PID=$!
-  echo "Visdom server started with PID: $VISDOM_PID"
-fi
+# --- Start Jupyter Lab ---
+echo "Starting Jupyter Lab on port 8888..."
+export SHELL=/bin/bash
 
-# --- Start Jupyter Lab Server ---
-JUPYTER_PORT=8888
-echo "Attempting to start Jupyter Lab on port $JUPYTER_PORT..."
-
-if is_port_in_use "$JUPYTER_PORT"; then
-  echo "ERROR: Port $JUPYTER_PORT is already in use. Cannot start Jupyter Lab. Exiting."
-  exit 1
-else
-  # 'exec' replaces the current shell process with the Jupyter Lab process.
-  # This is crucial for Docker containers for graceful shutdown.
-  # Use python3 -m jupyterlab to call it as a module.
-  echo "Jupyter Lab will be accessible via http://localhost:$JUPYTER_PORT/ (check logs for token)"
-  exec python3 -m jupyterlab --port="$JUPYTER_PORT" --no-browser --allow-root --ip=0.0.0.0
-fi
+# FIXED: Using a more robust way to pass settings to avoid shell expansion errors
+exec python3 -m jupyterlab \
+    --port=8888 \
+    --no-browser \
+    --allow-root \
+    --ip=0.0.0.0 \
+    --ServerApp.terminado_settings='{"shell_command": ["/bin/bash"]}'
