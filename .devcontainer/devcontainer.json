@@ -1,0 +1,35 @@
+{
+    "name": "VastAI-PyTorch-Sync",
+    "image": "vastai/pytorch:cuda-12.4.1-auto",
+    "workspaceFolder": "/workspaces", // Explicitly sets the root
+    
+    "runArgs": [
+        "--gpus", "all",
+        "--shm-size", "16gb"
+    ],
+
+    "remoteEnv": {
+        // This adds your project root to the Python import search path
+        "PYTHONPATH": "${containerWorkspaceFolder}"
+    },
+
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "ms-toolsai.jupyter",
+                "ms-python.vscode-pylance"
+            ],
+            "settings": {
+                "python.defaultInterpreterPath": "/opt/conda/bin/python",
+                // Ensures terminal starts at your code root
+                "terminal.integrated.cwd": "${containerWorkspaceFolder}",
+                // Helps Pylance (IntelliSense) see your modules
+                "python.analysis.extraPaths": ["${containerWorkspaceFolder}"]
+            }
+        }
+    },
+
+    "postCreateCommand": "apt-get update && apt-get install -y tmux git-lfs && pip install visdom ipykernel",
+    "remoteUser": "root"
+}
