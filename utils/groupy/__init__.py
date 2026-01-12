@@ -7,5 +7,5 @@ parent_dir = os.path.abspath(os.path.join(os.getcwd(), os.pardir))
 '''
 #parent_dir = os.path.abspath(os.path.join(os.getcwd(), os.pardir))
 #print("parent",parent_dir)
-parent_dir= os.path.join('/work/DLR','utils/')
+parent_dir= os.path.join('/workspaces/DLR','utils/')
 sys.path.append(parent_dir)

@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import torch
 import torchvision
 import torchvision.transforms as transforms
@@ -22,8 +23,8 @@ from copy import deepcopy
 from torch.utils.data import Dataset, DataLoader, Subset
 from typing import Tuple, List
 
-
-
+workspaces_path= os.getenv('PYTHONPATH')
+print(f"Current Path: {workspaces_path}")
 
 # --- Optimized Dataset Class ---
 class OneHotVectorizedMNIST(Dataset):
@@ -77,7 +78,7 @@ def get_loaders_vect(n_train= 20000, n_test= 10000):
         transforms.ToTensor(),
         transforms.Normalize((0.1307,), (0.3081,))
     ])
-    path = '/work/DLR/trained_models/MNIST/data'  
+    path = workspaces_path + '/trained_models/MNIST/data'  
 
     mnist_trainset_base = torchvision.datasets.MNIST(
         root=path, train=True, download=True, transform=transform
@@ -127,7 +128,7 @@ def get_loaders():
             transforms.Normalize((0.1307,), (0.3081,))  # Mean and standard deviation for MNIST
         ])
 
-    path= '/work/DLR/trained_models/MNIST/data' 
+    path= workspaces_path + '/trained_models/MNIST/data' 
     trainset = torchvision.datasets.MNIST(root= path, train=True, download=True, transform=transform)
     trainset, valset = train_test_split(trainset, train_size=0.8)
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=64, shuffle=False, num_workers=2, pin_memory=True)
@@ -148,7 +149,8 @@ def train_net(force_train=False, fn=None, kwargs={}):
     net = get_untrained_net()
     init_net = deepcopy(net)
     trainloader, valloader, testloader = get_loaders()
-    model_dir= os.path.join('/work/DLR','trained_models', 'MNIST', 'model4', 'nn_models/')   
+    model_dir= os.path.join(workspaces_path,'trained_models', 'MNIST', 'model4', 'nn_models/')
+    print("Model Directory:", model_dir)   
     path_exists = os.path.exists(model_dir + 'mnist_gcnn_trained_nn.pth')
     
     if path_exists:
@@ -164,7 +166,7 @@ def train_net(force_train=False, fn=None, kwargs={}):
                         optimizer=torch.optim.SGD(net.parameters(), lr=0.02, momentum=0.5),
                         lfn=  nn.NLLLoss(), 
                         num_epochs = 10,
-                        name='mnist_gcnn', net=net, init_net= init_net, save_init= not force_train, fn=fn, kwargs=kwarg)
+                        name='mnist_gcnn', net=net, init_net= init_net, save_init= not force_train, fn=fn, kwargs=kwargs)
         
     return trainloader, valloader, testloader, init_net, net
 

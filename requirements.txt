@@ -6,3 +6,6 @@ tqdm==4.67.1
 visdom==0.2.4
 cvxpy
 einops
+ipykernel==6.29.5
+visdom 
+torchmetrics
