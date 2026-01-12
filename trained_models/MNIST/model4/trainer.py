@@ -1,27 +1,17 @@
 import os
-from pathlib import Path
 import torch
 import torchvision
 import torchvision.transforms as transforms
-from torch.utils.data import Dataset
-import random
+from torch.utils.data import Dataset, DataLoader, Subset
 import torch.backends.cudnn as cudnn
+import torch.nn.functional as F
 from trained_models.MNIST.model4 import model4
-import numpy as np
 from sklearn.model_selection import train_test_split
 from torch.linalg import norm
-from torchvision import models
 import torch.nn as nn
 from utils import trainer as t
-
-#from __future__ import print_function
-import argparse
-from torchvision import datasets, transforms
-from torch.autograd import Variable
-from sklearn.model_selection import train_test_split
 from copy import deepcopy
-from torch.utils.data import Dataset, DataLoader, Subset
-from typing import Tuple, List
+from typing import List
 
 workspaces_path= os.getenv('PYTHONPATH')
 print(f"Current Path: {workspaces_path}")
@@ -45,8 +35,7 @@ class OneHotVectorizedMNIST(Dataset):
         vectorized_image = image.flatten() 
 
         # 2. One-hot encode the label
-        one_hot_label = torch.zeros(self.num_classes, dtype=torch.float32)
-        one_hot_label[label] = 1.0
+        one_hot_label = F.one_hot(torch.tensor(label), num_classes=self.num_classes).float()
         
         return vectorized_image, one_hot_label
 
@@ -94,8 +83,8 @@ def get_loaders_vect(n_train= 20000, n_test= 10000):
         random_state=5700 # Use a fixed seed for reproducibility
     )
 
-    trainset = torch.utils.data.Subset(full_train_set, train_indices)
-    valset = torch.utils.data.Subset(full_train_set, val_indices)
+    trainset = Subset(full_train_set, train_indices)
+    valset = Subset(full_train_set, val_indices)
 
     mnist_testset_base = torchvision.datasets.MNIST(
         root=path, train=False, download=True, transform=transform
@@ -130,13 +119,18 @@ def get_loaders():
 
     path= workspaces_path + '/trained_models/MNIST/data' 
     trainset = torchvision.datasets.MNIST(root= path, train=True, download=True, transform=transform)
-    trainset, valset = train_test_split(trainset, train_size=0.8)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=64, shuffle=False, num_workers=2, pin_memory=True)
-    valloader = torch.utils.data.DataLoader(valset, batch_size=100,
-                                                shuffle=False, num_workers=1, pin_memory=True)
+    
+    indices = list(range(len(trainset)))
+    train_indices, val_indices = train_test_split(indices, train_size=0.8, random_state=SEED)
+    
+    trainset = Subset(trainset, train_indices)
+    valset = Subset(trainset, val_indices)
+    
+    trainloader = DataLoader(trainset, batch_size=64, shuffle=False, num_workers=2, pin_memory=True)
+    valloader = DataLoader(valset, batch_size=100, shuffle=False, num_workers=1, pin_memory=True)
     
     testset = torchvision.datasets.MNIST(root= path, train=False, download=True, transform=transform)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=64, shuffle=False, num_workers=2, pin_memory=True)
+    testloader = DataLoader(testset, batch_size=64, shuffle=False, num_workers=2, pin_memory=True)
     return trainloader, valloader, testloader
 
 #GET NET
@@ -144,8 +138,9 @@ def get_untrained_net():
     net= model4.Net()
     return net
 
-def train_net(force_train=False, fn=None, kwargs={}): 
+def train_net(force_train=False, fn=None, kwargs={}):
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    cudnn.benchmark = True
     net = get_untrained_net()
     init_net = deepcopy(net)
     trainloader, valloader, testloader = get_loaders()
