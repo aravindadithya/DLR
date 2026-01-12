@@ -17,8 +17,8 @@ from utils import trainer as t
 from copy import deepcopy
 
 
-#device='cpu'
-#print(f"Using device: {device}")
+workspaces_path= os.getenv('PYTHONPATH')
+print(f"Current Path: {workspaces_path}")
 
 #TRANSFORM UTIL FUNCTIONS
 def one_hot_data(dataset, num_samples=-1):
@@ -106,7 +106,7 @@ def get_loaders():
          transforms.Lambda(repeat_channel)]
     )
     
-    path= '/work/DLR/trained_models/MNIST/data'   
+    path= workspaces_path + '/trained_models/MNIST/data'   
         
     mnist_trainset = torchvision.datasets.MNIST(root=path,
                                                     train=True,
@@ -146,7 +146,7 @@ def train_net(force_train=False, fn=None, kwargs={}):
     net = get_untrained_net()
     init_net = deepcopy(net)
     trainloader, valloader, testloader = get_loaders()
-    model_dir = os.path.join('/work/DLR','trained_models', 'MNIST', 'model3', 'nn_models/')
+    model_dir = os.path.join(workspaces_path,'trained_models', 'MNIST', 'model3', 'nn_models/')
     path_exists = os.path.exists(model_dir +'mnist_fc_trained_nn.pth')
     if path_exists:
         checkpoint = torch.load(model_dir+'mnist_fc_trained_nn_0.pth', weights_only=True)

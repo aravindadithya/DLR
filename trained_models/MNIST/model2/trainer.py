@@ -14,6 +14,9 @@ import torch.nn as nn
 from utils import trainer as t
 from copy import deepcopy
 
+workspaces_path= os.getenv('PYTHONPATH')
+print(f"Current Path: {workspaces_path}")
+
 # ACCESS LOADERS
 def get_loaders():
     transform = transforms.Compose([
@@ -21,7 +24,7 @@ def get_loaders():
             transforms.Normalize((0.1307,), (0.3081,))  # Mean and standard deviation for MNIST
         ])
 
-    path= '/work/DLR/trained_models/MNIST/data' 
+    path= workspaces_path + '/trained_models/MNIST/data' 
     trainset = torchvision.datasets.MNIST(root= path, train=True, download=True, transform=transform)
     trainset, valset = train_test_split(trainset, train_size=0.8)
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=64, shuffle=False, num_workers=2, pin_memory=True)
@@ -43,7 +46,7 @@ def train_net(force_train=False, fn=None, kwargs={}):
     net = get_untrained_net()
     init_net = deepcopy(net)
     trainloader, valloader, testloader = get_loaders()
-    model_dir= os.path.join('/work/DLR','trained_models', 'MNIST', 'model2', 'nn_models/')   
+    model_dir= os.path.join(workspaces_path,'trained_models', 'MNIST', 'model2', 'nn_models/')   
     path_exists = os.path.exists(model_dir + 'mnist_conv_trained_nn.pth')
     
     if path_exists:

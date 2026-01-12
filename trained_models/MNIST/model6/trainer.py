@@ -23,6 +23,8 @@ from torchvision import datasets, transforms
 from torch.autograd import Variable
 from sklearn.model_selection import train_test_split
 
+workspaces_path= os.getenv('PYTHONPATH')
+print(f"Current Path: {workspaces_path}")
 
 class DiscreteRandomRotation:
     def __init__(self, degrees):
@@ -42,7 +44,7 @@ def get_loaders():
             DiscreteRandomRotation(degrees=[0, 90, 180, 270])
         ])
 
-    path= '/work/DLR/trained_models/MNIST/data' 
+    path= workspaces_path + '/trained_models/MNIST/data' 
     trainset = torchvision.datasets.MNIST(root= path, train=True, download=True, transform=transform)
     trainset, valset = train_test_split(trainset, train_size=0.8)
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=64, shuffle=False, num_workers=2, pin_memory=True)
@@ -63,7 +65,7 @@ def train_net(force_train=False, fn=None, kwargs={}):
     net = get_untrained_net()
     init_net = deepcopy(net)
     trainloader, valloader, testloader = get_loaders()
-    model_dir= os.path.join('/work/DLR','trained_models', 'MNIST', 'model6', 'nn_models/')
+    model_dir= os.path.join(workspaces_path,'trained_models', 'MNIST', 'model6', 'nn_models/')
     path_exists = os.path.exists(model_dir + 'mnist_conv_trained_nn.pth')
 
     if not path_exists:
@@ -73,7 +75,7 @@ def train_net(force_train=False, fn=None, kwargs={}):
         net.load_state_dict(checkpoint['state_dict'])  # Access the 'state_dict' within the loaded dictionary
         print("Model weights loaded successfully.")           
 
-    if path_exists or force_train
+    if path_exists or force_train:
         t.train_network(trainloader, valloader, testloader,
                         num_classes=10, root_path= model_dir, 
                         optimizer=torch.optim.SGD(net.parameters(), lr=0.05, momentum=0.5),

@@ -21,6 +21,9 @@ from torch.autograd import Variable
 from sklearn.model_selection import train_test_split
 from copy import deepcopy
 
+workspaces_path= os.getenv('PYTHONPATH')
+print(f"Current Path: {workspaces_path}")
+
 # ACCESS LOADERS
 def get_loaders():
     
@@ -38,12 +41,13 @@ def get_loaders():
         transforms.Normalize(means, (0.2023, 0.1994, 0.2010)),
     ])
 
-    trainset = torchvision.datasets.CIFAR10(root='/work/DLR/trained_models/CIFAR/data', train=True, download=True, transform=transform_train)
+    path = workspaces_path+'/trained_models/CIFAR/data'
+    trainset = torchvision.datasets.CIFAR10(root=path, train=True, download=True, transform=transform_train)
     trainset, valset = train_test_split(trainset, train_size=0.8)
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=128, shuffle=True, num_workers=10, pin_memory=True)
     valloader = torch.utils.data.DataLoader(valset, batch_size=100,
                                                 shuffle=False, num_workers=10,pin_memory=True)
-    testset = torchvision.datasets.CIFAR10(root='/work/DLR/trained_models/CIFAR/data', train=False, download=True, transform=transform_test)
+    testset = torchvision.datasets.CIFAR10(root=path, train=False, download=True, transform=transform_test)
     testloader = torch.utils.data.DataLoader(testset, batch_size=100, shuffle=False, num_workers=10, pin_memory=True)
 
     #classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
@@ -60,7 +64,7 @@ def train_net(force_train=False,fn=None, kwargs={}):
     net = get_untrained_net()
     init_net = deepcopy(net)
     trainloader, valloader, testloader = get_loaders()
-    model_dir= os.path.join('/work/DLR','trained_models', 'CIFAR', 'model3', 'nn_models/')   
+    model_dir= os.path.join(workspaces_path,'trained_models', 'CIFAR', 'model3', 'nn_models/')   
     init_path_exists = os.path.exists(model_dir + 'cifar_gcnn_init_nn.pth')
     path_exists = os.path.exists(model_dir + 'cifar_gcnn_trained_nn.pth')
     
