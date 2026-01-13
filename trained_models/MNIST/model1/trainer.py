@@ -2,16 +2,12 @@ import os
 import torch
 import torchvision
 import torchvision.transforms as transforms
-from torch.utils.data import Dataset
-import random
-import torch.backends.cudnn as cudnn
-import random
+from torch.utils.data import DataLoader, Subset
 import torch.backends.cudnn as cudnn
 from trained_models.MNIST.model1 import model1
 import numpy as np
+import random
 from sklearn.model_selection import train_test_split
-from torch.linalg import norm
-from torchvision import models
 import torch.nn as nn
 from utils import trainer as t
 from copy import deepcopy
@@ -42,46 +38,27 @@ def group_by_class(dataset):
     return labelset
 
 
-def split(trainset, p=.8):
-    train, val = train_test_split(trainset, train_size=p)
-    return train, val
-
-def merge_data(mnist, n):
-    #cifar_by_label = group_by_class(cifar)
-
-    mnist_by_label = group_by_class(mnist)
-
-    data = []
-    labels = []
-
-    labelset = {}
-
-    for i in range(10):
-        one_hot = torch.zeros(1, 10)
-        one_hot[0, i] = 1
-        labelset[i] = one_hot
-
-    for l in mnist_by_label:
-
-        #cifar_data = torch.cat(cifar_by_label[l])
-        mnist_data = torch.cat(mnist_by_label[l])
-        min_len = len(mnist_data)
-        m = min(n, min_len)
-        #cifar_data = cifar_data[:m]
-        mnist_data = mnist_data[:m]
-
-        merged = torch.cat([mnist_data], axis=-1)
-        #for i in range(3):
-           # vis.image(merged[i])
-        data.append(merged.reshape(m, -1))
-        print(merged.shape)
-        labels.append(np.repeat(labelset[l], m, axis=0))
-    data = torch.cat(data, axis=0)
-
-    labels = np.concatenate(labels, axis=0)
-    merged_labels = torch.from_numpy(labels)
-
-    return list(zip(data, labels))
+class MNISTDataset(torch.utils.data.Dataset):
+    """Lazy dataset - just applies transforms on-demand"""
+    def __init__(self, mnist_dataset, n_per_class=500):
+        self.dataset = mnist_dataset
+        # Limit to n_per_class*10 samples (fast - no iteration)
+        self.limit = min(n_per_class * 10, len(self.dataset))
+    
+    def __len__(self):
+        return self.limit
+    
+    def __getitem__(self, idx):
+        img, label = self.dataset[idx]
+        
+        # img is already (3, 32, 32) from the transform pipeline
+        img_flat = img.flatten()  # (3072,)
+        
+        # One-hot encode label
+        one_hot = torch.zeros(10, dtype=torch.float32)
+        one_hot[label] = 1.0
+        
+        return img_flat, one_hot
 
 # ACCESS LOADERS
 def get_loaders():
@@ -112,14 +89,17 @@ def get_loaders():
                                                     transform=mnist_transform,
                                                     download=True)
     
-    #trainset = group_by_class(mnist_trainset)
-    trainset = merge_data(mnist_trainset, 5000)
-    trainset, valset = split(trainset, p=.8)
+    trainset = MNISTDataset(mnist_trainset, n_per_class=500)
+    indices = list(range(len(trainset)))
+    train_indices, val_indices = train_test_split(indices, train_size=0.8, random_state=SEED)
+    
+    trainset = Subset(trainset, train_indices)
+    valset = Subset(trainset, val_indices)
     print("Train Size: ", len(trainset), "Val Size: ", len(valset))
     
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=100,
-                                                  shuffle=True, num_workers=2,pin_memory=True)
-    valloader = torch.utils.data.DataLoader(valset, batch_size=100,
+    trainloader = DataLoader(trainset, batch_size=100,
+                                                  shuffle=True, num_workers=2, pin_memory=True)
+    valloader = DataLoader(valset, batch_size=100,
                                                 shuffle=False, num_workers=1, pin_memory=True)
     
     
@@ -128,9 +108,9 @@ def get_loaders():
                                                    transform=mnist_transform,
                                                    download=True)
     
-    print("Test Size: ", len(mnist_testset))
-    testset = merge_data(mnist_testset, 900)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=128,
+    testset = MNISTDataset(mnist_testset, n_per_class=90)
+    print("Test Size: ", len(testset))
+    testloader = DataLoader(testset, batch_size=128,
                                                  shuffle=False, num_workers=2, pin_memory=True)
 
     return trainloader, valloader, testloader
